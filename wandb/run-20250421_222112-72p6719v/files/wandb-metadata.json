@@ -1,0 +1,60 @@
+{
+  "os": "Linux-5.15.146+-x86_64-with-glibc2.31",
+  "python": "CPython 3.11.4",
+  "startedAt": "2025-04-21T22:21:12.315465Z",
+  "program": "/workspace/Utsav/DeepLDA/train.py",
+  "codePath": "train.py",
+  "git": {
+    "remote": "https://github.com/liyu10000/DeepLDA.git",
+    "commit": "1b99b3e2d96db00b02ab60e10b9ce70d81a0fcfd"
+  },
+  "email": "utsavdutta98@gmail.com",
+  "root": "/workspace/Utsav/DeepLDA",
+  "host": "finetuning-80gb-4-4-6bd95cd6df-hszql",
+  "executable": "/root/.cache/pypoetry/virtualenvs/deeplda-project-Iynu0haq-py3.11/bin/python",
+  "codePathLocal": "train.py",
+  "cpu_count": 48,
+  "cpu_count_logical": 96,
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "gpu_count": 4,
+  "disk": {
+    "/": {
+      "total": "3168432029696",
+      "used": "1750842142720"
+    }
+  },
+  "memory": {
+    "total": "1437341159424"
+  },
+  "cpu": {
+    "count": 48,
+    "countLogical": 96
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    }
+  ],
+  "cudaVersion": "12.4"
+}

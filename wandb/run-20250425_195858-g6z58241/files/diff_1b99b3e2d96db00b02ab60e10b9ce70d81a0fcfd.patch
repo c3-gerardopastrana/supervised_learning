@@ -1,0 +1,1074 @@
+diff --git a/lda.py b/lda.py
+index cc368cf..bb3dd8c 100644
+--- a/lda.py
++++ b/lda.py
+@@ -1,68 +1,142 @@
+ import torch
+ import torch.nn as nn
+ from functools import partial
+-
++import torch.nn.functional as F
+ 
+ def lda(X, y, n_classes, lamb):
+-    # flatten X
+     X = X.view(X.shape[0], -1)
+     N, D = X.shape
+ 
+-    # count unique labels in y
+     labels, counts = torch.unique(y, return_counts=True)
+-    assert len(labels) == n_classes  # require X,y cover all classes
+ 
+-    # compute mean-centered observations and covariance matrix
+     X_bar = X - torch.mean(X, 0)
+-    Xc_mean = torch.zeros((n_classes, D), dtype=X.dtype, device=X.device, requires_grad=False)
+-    St = X_bar.t().matmul(X_bar) / (N - 1)  # total scatter matrix
+-    Sw = torch.zeros((D, D), dtype=X.dtype, device=X.device, requires_grad=True)  # within-class scatter matrix
++    St = X_bar.t().matmul(X_bar) / (N - 1)
++
++    Sw = torch.zeros((D, D), dtype=X.dtype, device=X.device, requires_grad=True)
++    present_class_means = []
++
+     for c, Nc in zip(labels, counts):
+         Xc = X[y == c]
+-        Xc_mean[int(c), :] = torch.mean(Xc, 0)
+-        Xc_bar = Xc - Xc_mean[int(c), :]
++        Xc_mean = torch.mean(Xc, dim=0)
++        present_class_means.append(Xc_mean)
++        Xc_bar = Xc - Xc_mean
+         Sw = Sw + Xc_bar.t().matmul(Xc_bar) / (Nc - 1)
+-    Sw /= n_classes
+-    Sb = St - Sw  # between scatter matrix
+ 
+-    # cope for numerical instability
+-    Sw += torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++    Sw /= len(labels)  # average over present classes
++    Sb = St - Sw
++
++    print(lamb)
++    Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++
++    temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
++    # # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
++    # evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)
++    # print(evals.shape, evecs.shape)
+ 
++    # # remove complex eigen values and sort
++    # noncomplex_idx = evals[:, 1] == 0
++    # evals = evals[:, 0][noncomplex_idx] # take real part of eigen values
++    # evecs = evecs[:, noncomplex_idx]
++    # evals, inc_idx = torch.sort(evals) # sort by eigen values, in ascending order
++    # evecs = evecs[:, inc_idx]
++    # print(evals.shape, evecs.shape)
++
++    # # flag to indicate if to skip backpropagation
++    # hasComplexEVal = evecs.shape[1] < evecs.shape[0]
++
++    # return hasComplexEVal, Xc_mean, evals, evecs
+     # compute eigen decomposition
+-    temp = Sw.pinverse().matmul(Sb)
+     # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
+-    evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)
+-    print(evals.shape, evecs.shape)
++    # Use the new torch.linalg.eig for general matrices
++    # It returns complex eigenvalues and eigenvectors by default
++    evals_complex, evecs_complex = torch.linalg.eig(temp)
++
++    # Process complex eigenvalues returned by torch.linalg.eig
++    # Check for eigenvalues with non-negligible imaginary parts
++    tol = 1e-6 # Tolerance for considering imaginary part zero
++    is_complex = torch.abs(evals_complex.imag) > tol
++    hasComplexEVal = torch.any(is_complex) # Flag if *any* eigenvalue was complex beyond tolerance
+ 
+-    # remove complex eigen values and sort
+-    noncomplex_idx = evals[:, 1] == 0
+-    evals = evals[:, 0][noncomplex_idx] # take real part of eigen values
+-    evecs = evecs[:, noncomplex_idx]
+-    evals, inc_idx = torch.sort(evals) # sort by eigen values, in ascending order
+-    evecs = evecs[:, inc_idx]
+-    print(evals.shape, evecs.shape)
++    if hasComplexEVal:
++         # Optional: Print a warning if complex eigenvalues are detected
++         print(f"Warning: Found {torch.sum(is_complex)} eigenvalues with imaginary part > {tol}. Keeping only real eigenvalues.")
+ 
+-    # flag to indicate if to skip backpropagation
+-    hasComplexEVal = evecs.shape[1] < evecs.shape[0]
++    real_idx = ~is_complex
++    evals = evals_complex[real_idx].real 
++    evecs = evecs_complex[:, real_idx].real
+ 
+-    return hasComplexEVal, Xc_mean, evals, evecs
++    if evals.numel() > 0: # Check if any real eigenvalues are left
++        evals, inc_idx = torch.sort(evals)
++        evecs = evecs[:, inc_idx]
++    else:
++        print("Warning: All eigenvalues were complex. Eigenvalue/vector tensors are empty.")
++        evals = torch.tensor([], dtype=temp.dtype, device=temp.device)
++        D = temp.shape[0]
++        evecs = torch.tensor([[] for _ in range(D)], dtype=temp.dtype, device=temp.device)
++    return hasComplexEVal, Xc_mean, evals, evecs, temp
+ 
+ 
+ def lda_loss(evals, n_classes, n_eig=None, margin=None):
+     n_components = n_classes - 1
+     evals = evals[-n_components:]
+     # evecs = evecs[:, -n_components:]
+-    print('evals', evals.shape, evals)
++    # print('evals', evals.shape, evals)
+     # print('evecs', evecs.shape)
+ 
+     # calculate loss
+     if margin is not None:
+         threshold = torch.min(evals) + margin
+         n_eig = torch.sum(evals < threshold)
+-    loss = -torch.mean(evals[:n_eig]) # small eigen values are on left
++   
++    probs = evals / evals.sum()
++    entropy = -torch.sum(probs * torch.log(probs.clamp(min=1e-9)))
++
++    loss = -entropy
++    #loss = torch.mean(evals[:n_eig]) # small eigen values are on left
++    
++    # eigvals_norm = evals / evals.sum()
++    # eps = 1e-10 
++    # eigvals_norm = torch.clamp(eigvals_norm, min=eps)
++    # oss = (eigvals_norm * eigvals_norm.log()).sum()
++    #loss = torch.log(eigvals_norm.max()-eigvals_norm.min())
+     return loss
++    
++def sina_loss(sigma_w_inv_b):
++    n = torch.tensor(2, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++
++    max_frobenius_norm = max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
++    max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
++    
++    trace = torch.trace(sigma_w_inv_b).abs()
+ 
+ 
++
++    lambda_target = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    
++
++    # dim = sigma_w_inv_b.shape[0]
++    # identity = torch.eye(dim, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    # diff = sigma_w_inv_b - lambda_target * identity
++    # loss = torch.norm(diff, p='fro')**2
++
++    penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)  # scale-free, minimal tuning
++    loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
++    
++    # sigma_b_inv_w =  torch.linalg.pinv(sigma_w_inv_b, hermitian=True)
++    # min_frobenius_norm = torch.trace(sigma_b_inv_w @ sigma_b_inv_w)
++    # min_frobenius_norm = 1/torch.sqrt(min_frobenius_norm.abs())
++    
++    # gap =  max_frobenius_norm - min_frobenius_norm
++    #loss = torch.log(gap / trace)
++    
++    #trace = torch.trace(1/2*(sigma_w_inv_b + sigma_w_inv_b.T))
++    #loss = torch.log(max_frobenius_norm) - torch.log(trace)
++    
++    # off_diag = sigma_w_inv_b - torch.diag(torch.diagonal(sigma_w_inv_b))
++    # sum_squared_off_diag = torch.sum(off_diag ** 2).item()
++    # loss = sum_squared_off_diag - trace
++    return loss
++
+ class LDA(nn.Module):
+     def __init__(self, n_classes, lamb):
+         super(LDA, self).__init__()
+@@ -73,7 +147,7 @@ class LDA(nn.Module):
+ 
+     def forward(self, X, y):
+         # perform LDA
+-        hasComplexEVal, Xc_mean, evals, evecs = self.lda_layer(X, y)  # CxD, D, DxD
++        hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b = self.lda_layer(X, y)  # CxD, D, DxD
+ 
+         # compute LDA statistics
+         self.scalings_ = evecs  # projection matrix, DxD
+@@ -81,7 +155,7 @@ class LDA(nn.Module):
+         self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t())) # C
+ 
+         # return self.transform(X)
+-        return hasComplexEVal, evals
++        return hasComplexEVal, evals, sigma_w_inv_b
+ 
+     def transform(self, X):
+         """ transform data """
+@@ -104,6 +178,161 @@ class LDA(nn.Module):
+ 
+ 
+ 
++def spherical_lda(X, y, n_classes, lamb):
++    N, D = X.shape
++    labels, counts = torch.unique(y, return_counts=True)
++    assert len(labels) == n_classes  # require all classes to be present
++    
++    # Compute global mean direction and normalize
++    global_mean = torch.mean(X, 0)
++    global_mean = F.normalize(global_mean, p=2, dim=0)
++    
++    # Initialize containers
++    class_means_list = []
++    Sw = torch.zeros((D, D), dtype=X.dtype, device=X.device)
++    Sb = torch.zeros((D, D), dtype=X.dtype, device=X.device)
++    
++    # Calculate all class means
++    for c in labels:
++        class_idx = int(c)
++        Xc = X[y == c]
++        class_mean = F.normalize(torch.mean(Xc, dim=0), p=2, dim=0)
++        class_means_list.append(class_mean)
++    
++    Xc_mean = torch.stack(class_means_list)
++    
++    # Compute scatter matrices
++    for i, (c, Nc) in enumerate(zip(labels, counts)):
++        Xc = X[y == c]
++        class_mean = Xc_mean[i]
++
++        # Vectorized cosine similarities
++        cos_similarities = Xc @ class_mean
++        cos_similarities = torch.clamp(cos_similarities, -1.0 + 1e-6, 1.0 - 1e-6)
++
++        # Vectorized difference: samples projected away from mean direction
++        diffs = Xc - cos_similarities.unsqueeze(1) * class_mean.unsqueeze(0)
++
++        # Vectorized scatter matrix
++        class_scatter = diffs.T @ diffs
++
++        Sw = Sw + class_scatter
++    
++    Sw = Sw / N  # Normalize by total number of samples
++    
++    # Compute between-class scatter
++    for i, (c, Nc) in enumerate(zip(labels, counts)):
++        class_mean = Xc_mean[i]
++        cos_sim = torch.dot(class_mean, global_mean)
++        cos_sim = torch.clamp(cos_sim, -1.0 + 1e-6, 1.0 - 1e-6)
++
++        diff = class_mean.unsqueeze(1) - cos_sim * global_mean.unsqueeze(1)
++        diff_outer = diff @ diff.T
++        Sb = Sb + (Nc / N) * diff_outer
++
++    
++    # import numpy as np
++    # from sklearn.covariance import LedoitWolf
++    
++    # X_np = Sw.cpu().detach().numpy()
++
++    # lw = LedoitWolf()
++    # lw.fit(X_np)
++    # shrinkage = lw.shrinkage_
++    # mu = torch.trace(Sw) / D
++    # shrinkage = torch.nn.Parameter(torch.tensor(0.0, dtype=Sw.dtype, device=Sw.device))
++    # shrinkage = torch.sigmoid(shrinkage)
++    
++    Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device) * lamb
++    #Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
++    
++    
++    # Generalized eigenvalue problem
++    temp = torch.linalg.pinv(Sw_reg, hermitian=True) @ Sb
++    
++    # Eigen decomposition
++    evals_complex, evecs_complex = torch.linalg.eig(temp)
++    tol = 1e-6
++    is_complex = torch.abs(evals_complex.imag) > tol
++    hasComplexEVal = torch.any(is_complex)
++    
++    if hasComplexEVal:
++        print(f"Warning: Found {torch.sum(is_complex)} eigenvalues with imaginary part > {tol}. Keeping only real ones.")
++    
++    real_idx = ~is_complex
++    evals = evals_complex[real_idx].real
++    evecs = evecs_complex[:, real_idx].real
++    
++    if evals.numel() > 0:
++        evals, inc_idx = torch.sort(evals)
++        evecs = evecs[:, inc_idx]
++    else:
++        print("Warning: All eigenvalues were complex.")
++        evals = torch.tensor([], dtype=temp.dtype, device=temp.device)
++        evecs = torch.zeros((D, 0), dtype=temp.dtype, device=temp.device)
++    
++    return hasComplexEVal, Xc_mean, evals, evecs, temp
++
++
++class SphericalLDA(nn.Module):
++    def __init__(self, n_classes, lamb=1e-4):
++        super(SphericalLDA, self).__init__()
++        self.n_classes = n_classes
++        self.n_components = n_classes - 1  # Maximum meaningful LDA dimensions
++        self.lamb = lamb
++        self.lda_layer = partial(spherical_lda, n_classes=n_classes, lamb=lamb)
++    
++    def forward(self, X, y):
++        hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b = self.lda_layer(X, y)
++        
++        # Store projection matrix 
++        self.scalings_ = evecs
++        
++        # Project class means and normalize to create prototypes
++        projected_means = Xc_mean.matmul(evecs)
++        
++        # Project back to original space and normalize to ensure they're on the hypersphere
++        self.coef_ = F.normalize(projected_means.matmul(evecs.t()), p=2, dim=1)
++        
++        # Intercept is not meaningful in spherical space when using cosine similarity
++        self.intercept_ = torch.zeros(self.n_classes, dtype=X.dtype, device=X.device)
++        
++        return hasComplexEVal, evals, sigma_w_inv_b
++    
++    def transform(self, X):
++        # Normalize input
++        #X = F.normalize(X.view(X.shape[0], -1), p=2, dim=1)
++        
++        # Project data
++        X_new = X.matmul(self.scalings_)
++        
++        # Return only the most discriminative components
++        return X_new[:, :self.n_components]
++    
++    def predict(self, X):
++        # Normalize input embeddings
++        #X = F.normalize(X.view(X.shape[0], -1), p=2, dim=1)
++        
++        # Compute cosine similarities with class prototypes
++        similarities = X.matmul(self.coef_.t())
++        
++        # Return class with highest similarity
++        return torch.argmax(similarities, dim=1)
++    
++    def predict_proba(self, X):
++        #X = F.normalize(X.view(X.shape[0], -1), p=2, dim=1)
++        similarities = X.matmul(self.coef_.t())
++        
++        # Convert similarities to probabilities using softmax
++        proba = nn.functional.softmax(similarities, dim=1)
++        return proba
++    
++    def predict_log_proba(self, X):
++        #X = F.normalize(X.view(X.shape[0], -1), p=2, dim=1)
++        similarities = X.matmul(self.coef_.t())
++        log_proba = nn.functional.log_softmax(similarities, dim=1)
++        return log_proba
++
+ if __name__ == '__main__':
+     import numpy as np
+     np.set_printoptions(precision=4, suppress=True)
+diff --git a/train.py b/train.py
+index 7520acb..2ee5f5f 100644
+--- a/train.py
++++ b/train.py
+@@ -9,121 +9,116 @@ import torch.nn as nn
+ import torch.nn.functional as F
+ from PIL import Image
+ import torchvision
+-import torchvision.transforms as transforms
++from torchvision import transforms, datasets
+ import torch.optim as optim
+-
++import wandb
+ from functools import partial
+-from lda import LDA, lda_loss
++from lda import LDA, lda_loss, sina_loss, SphericalLDA
++import torch.distributed as dist
++import torch.multiprocessing as mp
++from torch.nn.parallel import DistributedDataParallel as DDP
++from torch.utils.data.distributed import DistributedSampler
++from torch.utils.data import DataLoader, random_split
++from torch.utils.checkpoint import checkpoint
+ 
+ 
+ class BasicBlock(nn.Module):
+     expansion = 1
+-
+     def __init__(self, in_planes, planes, stride=1):
+         super(BasicBlock, self).__init__()
+         self.conv1 = nn.Conv2d(
+             in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+         self.bn1 = nn.BatchNorm2d(planes)
+-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
+-                               stride=1, padding=1, bias=False)
++        self.conv2 = nn.Conv2d(
++            planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+         self.bn2 = nn.BatchNorm2d(planes)
+-
+         self.shortcut = nn.Sequential()
+-        if stride != 1 or in_planes != self.expansion*planes:
++        if stride != 1 or in_planes != self.expansion * planes:
+             self.shortcut = nn.Sequential(
+-                nn.Conv2d(in_planes, self.expansion*planes,
++                nn.Conv2d(in_planes, self.expansion * planes,
+                           kernel_size=1, stride=stride, bias=False),
+-                nn.BatchNorm2d(self.expansion*planes)
++                nn.BatchNorm2d(self.expansion * planes)
+             )
+-
+-    def forward(self, x):
++    
++    def _forward_impl(self, x):
+         out = F.relu(self.bn1(self.conv1(x)))
+         out = self.bn2(self.conv2(out))
+         out += self.shortcut(x)
+         out = F.relu(out)
+         return out
+-
+-
+-class Bottleneck(nn.Module):
+-    expansion = 4
+-
+-    def __init__(self, in_planes, planes, stride=1):
+-        super(Bottleneck, self).__init__()
+-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+-        self.bn1 = nn.BatchNorm2d(planes)
+-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
+-                               stride=stride, padding=1, bias=False)
+-        self.bn2 = nn.BatchNorm2d(planes)
+-        self.conv3 = nn.Conv2d(planes, self.expansion *
+-                               planes, kernel_size=1, bias=False)
+-        self.bn3 = nn.BatchNorm2d(self.expansion*planes)
+-
+-        self.shortcut = nn.Sequential()
+-        if stride != 1 or in_planes != self.expansion*planes:
+-            self.shortcut = nn.Sequential(
+-                nn.Conv2d(in_planes, self.expansion*planes,
+-                          kernel_size=1, stride=stride, bias=False),
+-                nn.BatchNorm2d(self.expansion*planes)
+-            )
+-
++        
+     def forward(self, x):
+-        out = F.relu(self.bn1(self.conv1(x)))
+-        out = F.relu(self.bn2(self.conv2(out)))
+-        out = self.bn3(self.conv3(out))
+-        out += self.shortcut(x)
+-        out = F.relu(out)
+-        return out
+-
++        return checkpoint(self._forward_impl, x)
+ 
+ class ResNet(nn.Module):
+-    def __init__(self, block, num_blocks, n_classes, lda_args):
++    def __init__(self, block, num_blocks, num_classes=1000, lda_args=None, use_checkpoint=True):
+         super(ResNet, self).__init__()
+         self.lda_args = lda_args
+-        if self.lda_args:  # LDA
+-            self.in_planes = 32
+-            self.out_planes = 16
+-        else:  # Usual CNN with CE loss
+-            self.in_planes = 32
+-            self.out_planes = 16 # 64
+-
+-        self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3,
+-                               stride=1, padding=1, bias=False)
+-        self.bn1 = nn.BatchNorm2d(self.in_planes)
+-        self.layer1 = self._make_layer(block, self.out_planes*1, num_blocks[0], stride=1)
+-        self.layer2 = self._make_layer(block, self.out_planes*2, num_blocks[1], stride=2)
+-        self.layer3 = self._make_layer(block, self.out_planes*4, num_blocks[2], stride=2)
+-        self.layer4 = self._make_layer(block, self.out_planes*8, num_blocks[3], stride=2)
++        self.in_planes = 64
++        self.use_checkpoint = use_checkpoint
++        
++        # ImageNet-style initial conv layer
++        self.conv1 = nn.Conv2d(3, 64, kernel_size=7,
++                               stride=2, padding=3, bias=False)
++        self.bn1 = nn.BatchNorm2d(64)
++        self.relu = nn.ReLU(inplace=True)
++        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
++        
++        # Residual layers
++        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
++        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
++        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
++        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
++        
++        # Global average pooling and output
++        self.avgpool = nn.AdaptiveAvgPool2d(1)
++        self.linear = nn.Linear(512 * block.expansion, num_classes)
++        
++        # LDA branch (if enabled)
+         if self.lda_args:
+-            self.lda = LDA(n_classes, lda_args['lamb'])
+-        else:
+-            self.linear = nn.Linear(self.out_planes*8*block.expansion, n_classes)
+-
++            self.lda = LDA(num_classes, lda_args['lamb'])  # your LDA class
++    
+     def _make_layer(self, block, planes, num_blocks, stride):
+-        strides = [stride] + [1]*(num_blocks-1)
++        strides = [stride] + [1] * (num_blocks - 1)
+         layers = []
+         for stride in strides:
+             layers.append(block(self.in_planes, planes, stride))
+             self.in_planes = planes * block.expansion
+         return nn.Sequential(*layers)
+-
+-    def forward(self, X, y):
+-        out = F.relu(self.bn1(self.conv1(X)))
+-        out = self.layer1(out)
+-        out = self.layer2(out)
+-        out = self.layer3(out)
+-        out = self.layer4(out)
+-        out = F.avg_pool2d(out, 4)
+-        fea = out.view(out.size(0), -1)  # NxC
++    
++    def _forward_features(self, x):
++        out = self.relu(self.bn1(self.conv1(x)))
++        out = self.maxpool(out)
++        
++        if self.use_checkpoint:
++            out = checkpoint(lambda x: self.layer1(x), out)
++            out = checkpoint(lambda x: self.layer2(x), out)
++            out = checkpoint(lambda x: self.layer3(x), out)
++            out = checkpoint(lambda x: self.layer4(x), out)
++        else:
++            out = self.layer1(out)
++            out = self.layer2(out)
++            out = self.layer3(out)
++            out = self.layer4(out)
++            
++        out = self.avgpool(out)  # output shape: [B, 512, 1, 1]
++        fea = out.view(out.size(0), -1)  # flatten to [B, 512]
++        return fea
++    
++    def forward(self, x, y=None, epoch=0):
++        fea = self._forward_features(x)
++        
+         if self.lda_args:
+-            hasComplexEVal, out = self.lda(fea, y)  # evals
+-            return hasComplexEVal, fea, out
++            fea = F.normalize(fea, p=2, dim=1)
++            hasComplexEVal, out, sigma_w_inv_b = self.lda(fea, y)
++            return hasComplexEVal, fea, out, sigma_w_inv_b
+         else:
+             out = self.linear(fea)
+             return out
+ 
+ 
+-def ResNet18(n_classes, lda_args):
+-    return ResNet(BasicBlock, [2, 2, 2, 2], n_classes, lda_args)
++def ResNet18(num_classes=1000, lda_args=None):
++    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args)
+ 
+ 
+ def ResNet34():
+@@ -157,178 +152,420 @@ class CIFAR10:
+ 
+ 
+ class Solver:
+-    def __init__(self, dataloaders, model_path, n_classes, lda_args={}, gpu=-1):
++    def __init__(self, dataloaders, model_path, n_classes, lda_args={}, local_rank=0, world_size=1):
+         self.dataloaders = dataloaders
+-        if gpu >= 0:
+-            os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
+-            self.device = torch.device('cuda:0')
+-        else:
+-            self.device = torch.device('cpu:0')
++        self.local_rank = local_rank
++        self.world_size = world_size
++        self.device = torch.device(f'cuda:{local_rank}')
++        
+         self.net = ResNet18(n_classes, lda_args)
+         self.net = self.net.to(self.device)
++        
++        # Wrap model with DDP
++        if world_size > 1:
++            self.net = DDP(self.net, device_ids=[local_rank], output_device=local_rank)
++        
+         self.use_lda = True if lda_args else False
+         if self.use_lda:
+             self.criterion = partial(lda_loss, n_classes=n_classes, 
+                                     n_eig=lda_args['n_eig'], margin=lda_args['margin'])
++            self.criterion = sina_loss
+         else:
+             self.criterion = nn.CrossEntropyLoss()
+-        self.optimizer = optim.SGD(self.net.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
++        
++        if local_rank == 0:
++            print(self.criterion)
++
++        self.optimizer = optim.AdamW(self.net.parameters(), lr=1e-3, weight_decay=5e-4)
+         self.model_path = model_path
+         self.n_classes = n_classes
+ 
+     def iterate(self, epoch, phase):
+-        self.net.train(phase == 'train')
++        if isinstance(self.net, DDP):
++            self.net.module.train(phase == 'train')
++        else:
++            self.net.train(phase == 'train')
++            
+         dataloader = self.dataloaders[phase]
+         total_loss = 0
+         correct = 0
+         total = 0
++        entropy_sum = 0.0
++        entropy_count = 0
++        
+         for batch_idx, (inputs, targets) in enumerate(dataloader):
+             inputs = inputs.to(self.device)
+             targets = targets.to(self.device)
+             self.optimizer.zero_grad()
+-            
++        
+             if self.use_lda:
+-                hasComplexEVal, feas, outputs = self.net(inputs, targets)
++                if isinstance(self.net, DDP):
++                    hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net.module(inputs, targets, epoch)
++                else:
++                    hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net(inputs, targets, epoch)
++                
+                 if not hasComplexEVal:
+-                    loss = self.criterion(outputs)
+-                    outputs = self.net.lda.predict_proba(feas)
++                    #stats
++                    eigvals_norm = outputs / outputs.sum()
++                    eps = 1e-10 
++                    max_eigval_norm = eigvals_norm.max().item()
++                    min_eigval_norm = eigvals_norm.min().item()
++                    quantile_25 = torch.quantile(eigvals_norm, 0.25).item()
++                    quantile_50 = torch.quantile(eigvals_norm, 0.5).item()
++                    quantile_75 = torch.quantile(eigvals_norm, 0.75).item()
++                    eigvals_norm = torch.clamp(outputs / outputs.sum(), min=eps, max=1.0)
++                    eigvals_norm /= eigvals_norm.sum()
++                    entropy = -(eigvals_norm * eigvals_norm.log()).sum().item()
++                    entropy_sum += entropy
++                    entropy_count += 1
++                    trace = torch.trace(sigma_w_inv_b)
++                    rank_sigma = torch.linalg.matrix_rank(sigma_w_inv_b).item()
++                    condition_sigma = torch.linalg.cond(sigma_w_inv_b).item()     
++                    off_diag = sigma_w_inv_b - torch.diag(torch.diagonal(sigma_w_inv_b))
++                    sum_squared_off_diag = torch.sum(off_diag ** 2).item()
++                    diag_var = torch.var(torch.diagonal(sigma_w_inv_b)).item()
++    
++                    loss = self.criterion(sigma_w_inv_b)
++
++                    if isinstance(self.net, DDP):
++                        outputs = self.net.module.lda.predict_proba(feas)
++                    else:
++                        outputs = self.net.lda.predict_proba(feas)
++
++                    if phase == 'train' and self.local_rank == 0:
++                        wandb.log({
++                            'loss': loss,
++                            "rank simga": rank_sigma,
++                            "condition simga": condition_sigma,
++                            "entropy": entropy,
++                            "sum_squared_off_diag": sum_squared_off_diag,
++                            "diag_var": diag_var,
++                            "trace": trace,
++                            "max normalized eigenvalue": max_eigval_norm,
++                            "min normalized eigenvalue": min_eigval_norm,
++                            "quantile_25": quantile_25,
++                            "quantile_50": quantile_50,
++                            "quantile_75": quantile_75})
++                    
+                 else:
+-                    print('Complex Eigen values found, skip backpropagation of {}th batch'.format(batch_idx))
++                    if self.local_rank == 0:
++                        print('Complex Eigen values found, skip backpropagation of {}th batch'.format(batch_idx))
+                     continue
+             else:
+-                outputs = self.net(inputs, targets)
+-                loss = self.criterion(outputs, targets)            
+-            # print('\noutputs shape:', outputs.shape)
+-            # print('loss:', loss)
++                outputs = self.net(inputs, targets, epoch)
++                loss = nn.CrossEntropyLoss()(outputs, targets)
++        
+             if phase == 'train':
+                 loss.backward()
++                grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=5.0)
+                 self.optimizer.step()
++                if self.local_rank == 0:
++                    wandb.log({"total_grad_norm_encoder": grad_norm.item()})
+             total_loss += loss.item()
+-
++    
+             outputs = torch.argmax(outputs.detach(), dim=1)
+-            # _, outputs = outputs.max(1)
+             total += targets.size(0)
+             correct += outputs.eq(targets).sum().item()
+-        total_loss /= (batch_idx + 1)
+-        total_acc = correct/total
+-        print('\nepoch %d: %s loss: %.3f | acc: %.2f%% (%d/%d)'
+-                     % (epoch, phase, total_loss, 100.*total_acc, correct, total))
++        
++        # Sync metrics across GPUs
++        if self.world_size > 1:
++            metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
++            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
++            total_loss, correct, total = metrics.tolist()
++            
++        total_loss /= (batch_idx + 1) * self.world_size
++        if total > 0:
++            total_acc = correct / total
++        else:
++            total_acc = 0 
++        
++        if self.local_rank == 0:
++            if entropy_count > 0:
++                average_entropy = entropy_sum / entropy_count
++                print(f'Average Entropy: {average_entropy:.4f}')
++            
++            print('\nepoch %d: %s loss: %.3f | acc: %.2f%% (%d/%d)'
++                         % (epoch, phase, total_loss, 100.*total_acc, correct, total))
++            wandb.log({
++                "epoch"+phase: epoch,
++                "total"+phase: total_loss,
++                "total_acc_train"+phase: 100.*total_acc
++            }) 
+         return total_loss, total_acc
+ 
++
+     def train(self, epochs):
+         best_loss = float('inf')
+         for epoch in range(epochs):
++            # Set epoch for distributed samplers
++            if self.world_size > 1:
++                for phase in self.dataloaders:
++                    if hasattr(self.dataloaders[phase].sampler, 'set_epoch'):
++                        self.dataloaders[phase].sampler.set_epoch(epoch)
++                
+             self.iterate(epoch, 'train')
+             with torch.no_grad():
+                 val_loss, val_acc = self.iterate(epoch, 'val')
+-            if val_loss < best_loss:
++                
++            if val_loss < best_loss and self.local_rank == 0:
+                 best_loss = val_loss
+-                checkpoint = {'epoch':epoch, 'val_loss':val_loss, 'state_dict':self.net.state_dict()}
++                if isinstance(self.net, DDP):
++                    checkpoint = {'epoch': epoch, 'val_loss': val_loss, 'state_dict': self.net.module.state_dict()}
++                else:
++                    checkpoint = {'epoch': epoch, 'val_loss': val_loss, 'state_dict': self.net.state_dict()}
+                 print('best val loss found')
+-            print()
+-        torch.save(checkpoint, self.model_path)
++                torch.save(checkpoint, self.model_path)
++            
++            if self.local_rank == 0:
++                print()
++        
++        # Final save on main process
++        if self.local_rank == 0:
++            if isinstance(self.net, DDP):
++                checkpoint = {'epoch': epochs-1, 'val_loss': val_loss, 'state_dict': self.net.module.state_dict()}
++            else:
++                checkpoint = {'epoch': epochs-1, 'val_loss': val_loss, 'state_dict': self.net.state_dict()}
++            torch.save(checkpoint, self.model_path.replace('.pth', '_final.pth'))
+ 
+     def test_iterate(self, epoch, phase):
+-        self.net.eval()
++        if isinstance(self.net, DDP):
++            self.net.module.eval()
++        else:
++            self.net.eval()
++            
+         dataloader = self.dataloaders[phase]
+         y_pred = []
+         y_true = []
++        
+         with torch.no_grad():
+             for inputs, targets in dataloader:
+                 inputs = inputs.to(self.device)
+                 targets = targets.to(self.device)
++                
+                 if self.use_lda:
+-                    _, feas, outputs = self.net(inputs, targets)
+-                    outputs = self.net.lda.predict_proba(feas)
++                    if isinstance(self.net, DDP):
++                        _, feas, outputs = self.net.module(inputs, targets, epoch)
++                        outputs = self.net.module.lda.predict_proba(feas)
++                    else:
++                        _, feas, outputs = self.net(inputs, targets, epoch)
++                        outputs = self.net.lda.predict_proba(feas)
+                 else:
+-                    outputs = self.net(inputs, targets)
++                    outputs = self.net(inputs, targets, epoch)
++                    
+                 outputs = torch.argmax(outputs, dim=1)
+                 y_pred.append(outputs.detach().cpu().numpy())
+                 y_true.append(targets.detach().cpu().numpy())
+-        return np.array(y_pred).flatten(), np.array(y_true).flatten()
++                
++        # Gather predictions from all GPUs
++        if self.world_size > 1:
++            all_y_pred = []
++            all_y_true = []
++            
++            # Convert lists to tensors for gathering
++            local_y_pred = torch.from_numpy(np.concatenate(y_pred)).to(self.device)
++            local_y_true = torch.from_numpy(np.concatenate(y_true)).to(self.device)
++            
++            # Get sizes from all processes
++            size_tensor = torch.tensor([local_y_pred.size(0)], device=self.device)
++            all_sizes = [torch.zeros_like(size_tensor) for _ in range(self.world_size)]
++            dist.all_gather(all_sizes, size_tensor)
++            
++            # Prepare tensors for gathering
++            max_size = max(size.item() for size in all_sizes)
++            padded_pred = torch.zeros(max_size, dtype=torch.long, device=self.device)
++            padded_true = torch.zeros(max_size, dtype=torch.long, device=self.device)
++            
++            # Copy data to padded tensors
++            size = local_y_pred.size(0)
++            padded_pred[:size] = local_y_pred
++            padded_true[:size] = local_y_true
++            
++            # Gather padded tensors
++            gathered_pred = [torch.zeros_like(padded_pred) for _ in range(self.world_size)]
++            gathered_true = [torch.zeros_like(padded_true) for _ in range(self.world_size)]
++            
++            dist.all_gather(gathered_pred, padded_pred)
++            dist.all_gather(gathered_true, padded_true)
++            
++            # Truncate according to original sizes and convert to numpy
++            for i, size in enumerate(all_sizes):
++                all_y_pred.append(gathered_pred[i][:size.item()].cpu().numpy())
++                all_y_true.append(gathered_true[i][:size.item()].cpu().numpy())
++                
++            return np.concatenate(all_y_pred), np.concatenate(all_y_true)
++        else:
++            return np.concatenate(y_pred), np.concatenate(y_true)
+         
+     def test(self):
+-        checkpoint = torch.load(self.model_path)
+-        epoch = checkpoint['epoch']
+-        val_loss = checkpoint['val_loss']
+-        self.net.load_state_dict(checkpoint['state_dict'])
+-        print('load model at epoch {}, with val loss: {:.3f}'.format(epoch, val_loss))
++        if self.local_rank == 0:
++            checkpoint = torch.load(self.model_path)
++            epoch = checkpoint['epoch']
++            val_loss = checkpoint['val_loss']
++            
++            if isinstance(self.net, DDP):
++                self.net.module.load_state_dict(checkpoint['state_dict'])
++            else:
++                self.net.load_state_dict(checkpoint['state_dict'])
++                
++            print('load model at epoch {}, with val loss: {:.3f}'.format(epoch, val_loss))
++            
++        # Synchronize all processes to ensure the model is loaded
++        if self.world_size > 1:
++            dist.barrier()
++            
+         y_pred, y_true = self.test_iterate(epoch, 'test')
+-        print(y_pred.shape, y_true.shape)
+-
+-        print('total', accuracy_score(y_true, y_pred))
+-        for i in range(self.n_classes):
+-            idx = y_true == i
+-            print('class', i, accuracy_score(y_true[idx], y_pred[idx]))
+-
+-
+-def parse_dir(img_dir, classes, randnum=-1):
+-    img_names = []
+-    ids = []
+-    for clazz in classes:
+-        sub_dir = os.path.join(img_dir, clazz)
+-        sub_files = [os.path.join(sub_dir, f) for f in os.listdir(sub_dir)]
+-        if len(sub_files) > randnum > 0:
+-            sub_files = random.sample(sub_files, randnum)
+-        img_names += sub_files
+-    for img_name in img_names:
+-        clazz = os.path.basename(os.path.dirname(img_name))
+-        id = clazz + '+' + os.path.basename(img_name)
+-        ids.append(id)
+-    return ids
++        
++        if self.local_rank == 0:
++            print(y_pred.shape, y_true.shape)
++            print('total', accuracy_score(y_true, y_pred))
++            for i in range(self.n_classes):
++                idx = y_true == i
++                if np.sum(idx) > 0:  # Only compute accuracy if there are samples
++                    print('class', i, accuracy_score(y_true[idx], y_pred[idx]))
++
++
++def setup(rank, world_size):
++    os.environ['MASTER_ADDR'] = 'localhost'
++    os.environ['MASTER_PORT'] = '12355'
++    
++    # Initialize the process group
++    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+ 
+ 
+-if __name__ == '__main__':
++def cleanup():
++    dist.destroy_process_group()
++
++
++def train_worker(rank, world_size, config):
++    # Setup process group
++    setup(rank, world_size)
++    
++    # Set the device
++    torch.cuda.set_device(rank)
++    
++    if rank == 0:
++        wandb.init(
++            project=config['wandb_project'],
++            entity=config['wandb_entity'],
++            group=config['wandb_group'],
++        )
++    
++    # Set seed for reproducibility
++    torch.manual_seed(config['seed'])
++    
++    # ImageNet normalization
++    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
++                                     std=[0.229, 0.224, 0.225])
++
+     transform_train = transforms.Compose([
+-        transforms.RandomCrop(32, padding=2),
++        transforms.RandomResizedCrop(224),
+         transforms.RandomHorizontalFlip(),
++        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.IMAGENET),
+         transforms.ToTensor(),
+-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
++        normalize,
+     ])
+ 
+     transform_test = transforms.Compose([
++        transforms.Resize(256),
++        transforms.CenterCrop(224),
+         transforms.ToTensor(),
+-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
++        normalize,
+     ])
+ 
+-    seed = 42
+-    n_classes = 10
+-    train_val_split = 0.2
+-    batch_size = 5000
+-    num_workers = 4
+-    gpu = -1
+-
+-    train_dir = '../data/cifar10/imgs/train'
+-    test_dir = '../data/cifar10/imgs/test'
+-    model_path = '../data/cifar10/exp1015/deeplda_best.pth'
+-
+-    loss = 'LDA' # CE or LDA
+-    lamb = 0.0001
+-    n_eig = 4
+-    margin = None
+-    lda_args = {'lamb':lamb, 'n_eig':n_eig, 'margin':margin} if loss == 'LDA' else {}
+-
+-    class_map = {'airplane':0, 'automobile':1, 'bird':2, 'cat':3, 'deer':4, 
+-                 'dog':5, 'frog':6, 'horse':7, 'ship':8, 'truck':9}
++    # Create datasets
++    full_trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    N = len(full_trainset)
++    Ntrain, Nval = N - int(N * config['train_val_split']), int(N * config['train_val_split'])
+     
+-    ids = parse_dir(train_dir, os.listdir(train_dir))
+-    train_img_names = [os.path.join(train_dir, *f.split('+')) for f in ids]
+-    trainset = CIFAR10(train_img_names, class_map, transform_train)
+-    N = len(trainset)
+-    Ntrain, Nval = N - int(N * train_val_split), int(N * train_val_split)
+-    trainset, valset = torch.utils.data.random_split(trainset, [Ntrain, Nval])
++    # Use random seed for reproducibility across processes
++    generator = torch.Generator().manual_seed(config['seed'])
++    trainset, valset = random_split(full_trainset, [Ntrain, Nval], generator=generator)
++    testset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++
++    # Create distributed samplers
++    train_sampler = DistributedSampler(trainset, num_replicas=world_size, rank=rank)
++    val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
++    test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
++
++    # Create dataloaders
+     trainloader = torch.utils.data.DataLoader(
+-        trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
++        trainset, 
++        batch_size=config['batch_size'],
++        sampler=train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++    
+     valloader = torch.utils.data.DataLoader(
+-        valset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+-
+-    test_ids = parse_dir(test_dir, os.listdir(test_dir))
+-    test_img_names = [os.path.join(test_dir, *f.split('+')) for f in test_ids]
+-    testset = CIFAR10(test_img_names, class_map, transform_test)
++        valset, 
++        batch_size=config['batch_size'],
++        sampler=val_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++    
+     testloader = torch.utils.data.DataLoader(
+-        testset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+-
+-    dataloaders = {'train':trainloader, 'val':valloader, 'test':testloader}
+-    solver = Solver(dataloaders, model_path, n_classes, lda_args, gpu)
+-    solver.train(20)
++        testset, 
++        batch_size=config['batch_size'],
++        sampler=test_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++
++    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader}
++
++    if config['loss'] == 'LDA':
++        lda_args = {'lamb': config['lamb'], 'n_eig': config['n_eig'], 'margin': config['margin']}
++    else:
++        lda_args = {}
++
++    # Create solver with distributed info
++    solver = Solver(
++        dataloaders=dataloaders, 
++        model_path=config['model_path'],
++        n_classes=config['n_classes'],
++        lda_args=lda_args,
++        local_rank=rank,
++        world_size=world_size
++    )
++    
++    # Train
++    solver.train(config['epochs'])
++    
++    # Test
+     solver.test()
++    
++    # Clean up
++    cleanup()
++
++
++if __name__ == '__main__':
++    config = {
++        'wandb_project': "DeepLDA",
++        'wandb_entity': "gerardo-pastrana-c3-ai",
++        'wandb_group': "gapLoss",
++        'seed': 42,
++        'n_classes': 1000,
++        'train_val_split': 0.1,
++        'batch_size': 2^13,  # Reduced batch size per GPU (128/4)
++        'num_workers': 1,  # Workers per GPU
++        'train_dir': 'datasets/imagenet_full_size/061417/train',
++        'val_dir': 'datasets/imagenet_full_size/061417/val',
++        'model_path': 'models/deeplda_best.pth',
++        'loss': 'LDA',
++        'lamb': 10,
++        'n_eig': 4,
++        'margin': None,
++        'epochs': 100,
++    }
++    
++    # Number of available GPUs
++    n_gpus = 4
++    
++    # Launch processes
++    mp.spawn(
++        train_worker,
++        args=(n_gpus, config),
++        nprocs=n_gpus,
++        join=True
++    )
+\ No newline at end of file

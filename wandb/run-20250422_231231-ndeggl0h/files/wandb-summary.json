@@ -1,0 +1,1 @@
+{"total_grad_norm_encoder":0.9020902514457703,"totaltrain":1.0648749669392903,"_step":167,"total_acc_traintrain":76.2625,"totalval":1.1491571068763733,"epochval":20,"total_acc_trainval":70.48,"_wandb":{"runtime":355},"_runtime":345.568309596,"_timestamp":1.745363896667183e+09,"epochtrain":20}

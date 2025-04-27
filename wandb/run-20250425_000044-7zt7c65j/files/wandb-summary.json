@@ -1,0 +1,1 @@
+{"_timestamp":1.7455576460121534e+09,"totaltrain":2.2761974564449123,"epochtrain":17,"_wandb":{"runtime":18402},"epochval":17,"total_grad_norm_encoder":1.3872214555740356,"total_acc_traintrain":49.92510099146544,"_step":150306,"totalval":2.4301614750826332,"total_acc_trainval":47.31698481019209,"_runtime":18401.039228606}
