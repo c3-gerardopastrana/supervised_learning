@@ -220,7 +220,7 @@ class Solver:
                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net.module(inputs, targets, epoch)
                 else:
                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net(inputs, targets, epoch)
-                
+                print("bins",torch.bincount(targets))
                 if not hasComplexEVal:
                     #stats
                     eigvals_norm = outputs / outputs.sum()
@@ -611,7 +611,7 @@ def train_worker(rank, world_size, config):
         rank=rank,
         seed=config['seed']
     )
-
+    print("tot", train_sampler.batches_per_epoch * 100)
 
     val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
     test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
@@ -686,8 +686,8 @@ if __name__ == '__main__':
         'n_eig': 4,
         'margin': None,
         'epochs': 100,
-        'k_classes': 40,  # for example
-        'n_samples': 100,   # 5 samples per class
+        'k_classes': 20,  # for example
+        'n_samples': 5,   # 5 samples per class
 
     }
     

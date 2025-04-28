@@ -220,7 +220,7 @@ class Solver:
                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net.module(inputs, targets, epoch)
                 else:
                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net(inputs, targets, epoch)
-                
+                print(feas.size())
                 if not hasComplexEVal:
                     #stats
                     eigvals_norm = outputs / outputs.sum()
@@ -317,7 +317,7 @@ class Solver:
         best_loss = float('inf')
         for epoch in range(epochs):
             # Set epoch for distributed samplers
-            
+            train_sampler.set_epoch(epoch) 
             if self.world_size > 1:
                 for phase in self.dataloaders:
                     if hasattr(self.dataloaders[phase].sampler, 'set_epoch'):
@@ -473,87 +473,98 @@ def train_worker(rank, world_size, config):
     import random
     from collections import defaultdict
     
-    from torch.utils.data import Sampler
-    import torch
-
     class ClassBalancedBatchSampler(Sampler):
-        def __init__(self, dataset, k_classes, n_samples,
-                     world_size=1, rank=0, seed=42):
+        def __init__(self, dataset, k_classes, n_samples, world_size=1, rank=0, seed=42, iterations_per_epoch=100):
             """
-            Class-balanced batch sampler for distributed training.
+            Class-balanced batch sampler that can be used with distributed training.
             
             Args:
                 dataset: Dataset to sample from
-                k_classes: Number of classes per batch
+                k_classes: Number of classes to sample per batch
                 n_samples: Number of samples per class
-                world_size: Number of processes (GPUs)
-                rank: Local rank of this process
+                world_size: Number of processes/GPUs in distributed training
+                rank: Rank of current process
                 seed: Random seed
+                iterations_per_epoch: Number of batches to generate per epoch
             """
-            super().__init__(dataset)
             self.dataset = dataset
             self.k_classes = k_classes
             self.n_samples = n_samples
             self.world_size = world_size
             self.rank = rank
             self.seed = seed
-            self.epoch = 0  # must be set each epoch manually!
-    
-            # Build mapping from class to list of indices
-            if isinstance(dataset, torch.utils.data.Subset):
-                targets = [dataset.dataset.targets[i] for i in dataset.indices]
-            else:
-                targets = dataset.targets
+            self.iterations_per_epoch = iterations_per_epoch
             
-            self.class_to_indices = {}
-            for idx, target in enumerate(targets):
-                if target not in self.class_to_indices:
-                    self.class_to_indices[target] = []
+            # Get targets (handle Subset)
+            if isinstance(dataset, torch.utils.data.Subset):
+                if hasattr(dataset.dataset, 'targets'):
+                    targets = [dataset.dataset.targets[i] for i in dataset.indices]
+                else:  # Handle case where targets are in another attribute or format
+                    targets = [dataset.dataset.samples[i][1] for i in dataset.indices]
+                indices = dataset.indices
+            else:
+                if hasattr(dataset, 'targets'):
+                    targets = dataset.targets
+                else:  # Handle case where targets are in another attribute or format
+                    targets = [sample[1] for sample in dataset.samples]
+                indices = list(range(len(targets)))
+    
+            # Build class to index mapping
+            self.class_to_indices = defaultdict(list)
+            for idx, target in zip(indices, targets):
                 self.class_to_indices[target].append(idx)
     
-            # Only keep classes that have enough samples
-            self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
-                                      if len(idxs) >= n_samples]
+            self.classes = [cls for cls in self.class_to_indices.keys() 
+                           if len(self.class_to_indices[cls]) >= n_samples]
             
-            assert len(self.available_classes) >= k_classes, \
-                f"Only {len(self.available_classes)} classes have {n_samples}+ samples, but need {k_classes}"
+            if len(self.classes) < k_classes:
+                raise ValueError(f"Only {len(self.classes)} classes have {n_samples} or more samples. "
+                               f"Cannot sample {k_classes} classes.")
+                
+            self.epoch = 0
+            self.samples_per_gpu = k_classes * n_samples // world_size
+            
+            if k_classes * n_samples % world_size != 0:
+                raise ValueError(f"k_classes ({k_classes}) * n_samples ({n_samples}) = {k_classes * n_samples} "
+                               f"must be divisible by world_size ({world_size})")
     
-            # Compute approximately how many batches can fit
-            total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
-            batch_size = self.k_classes * self.n_samples
-            self.batches_per_epoch = total_samples // batch_size
+        def __iter__(self):
+            # Create new random generator with seed dependent on epoch and rank
+            g = torch.Generator()
+            g.manual_seed(self.seed + self.epoch + self.rank)
+            
+            # For each batch
+            for _ in range(self.iterations_per_epoch):
+                batch = []
+                
+                # Sample k_classes with replacement
+                selected_classes = random.sample(self.classes, self.k_classes)
+                
+                # For each class, sample n_samples instances
+                for cls in selected_classes:
+                    # Sample with replacement if necessary
+                    available_indices = self.class_to_indices[cls]
+                    if len(available_indices) < self.n_samples:
+                        samples = random.choices(available_indices, k=self.n_samples)
+                    else:
+                        samples = random.sample(available_indices, self.n_samples)
+                    batch.extend(samples)
+                
+                # Ensure consistent shuffling across processes
+                indices = torch.tensor(batch, dtype=torch.int64)
+                indices = indices[torch.randperm(len(indices), generator=g)]
+                batch = indices.tolist()
+                
+                # Each GPU gets an equal portion of the batch
+                local_batch = batch[self.rank::self.world_size]
+                yield local_batch
+    
+        def __len__(self):
+            # Return number of batches per epoch
+            return self.iterations_per_epoch
     
         def set_epoch(self, epoch):
             self.epoch = epoch
-    
-        def __iter__(self):
-            g = torch.Generator()
-            g.manual_seed(self.seed + self.epoch + self.rank)
-    
-            all_batches = []
-    
-            while len(all_batches) < self.batches_per_epoch:
-                # Pick k_classes randomly
-                selected_classes = torch.tensor(self.available_classes)
-                selected_classes = selected_classes[torch.randperm(len(selected_classes), generator=g)][:self.k_classes]
-    
-                batch = []
-                for cls in selected_classes.tolist():
-                    indices = self.class_to_indices[cls]
-                    indices_tensor = torch.tensor(indices)
-                    chosen_indices = indices_tensor[torch.randperm(len(indices_tensor), generator=g)][:self.n_samples]
-                    batch.extend(chosen_indices.tolist())
-    
-                all_batches.append(batch)
-    
-            # Shard batches across GPUs
-            local_batches = all_batches[self.rank::self.world_size]
-    
-            for batch in local_batches:
-                yield batch
-    
-        def __len__(self):
-            return self.batches_per_epoch // self.world_size
 
 
 
@@ -609,9 +620,9 @@ def train_worker(rank, world_size, config):
         n_samples=config['n_samples'],
         world_size=world_size,
         rank=rank,
-        seed=config['seed']
+        seed=config['seed'],
+        iterations_per_epoch=config.get('iterations_per_epoch', 100)  # Default to 100 batches per epoch
     )
-
 
     val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
     test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
@@ -621,7 +632,7 @@ def train_worker(rank, world_size, config):
         trainset,
         batch_sampler=train_sampler,
         num_workers=config['num_workers'],
-        pin_memory=True
+        pin_memory=True,
     )
 
     
@@ -686,8 +697,8 @@ if __name__ == '__main__':
         'n_eig': 4,
         'margin': None,
         'epochs': 100,
-        'k_classes': 40,  # for example
-        'n_samples': 100,   # 5 samples per class
+        'k_classes': 20,  # for example
+        'n_samples': 5,   # 5 samples per class
 
     }
     

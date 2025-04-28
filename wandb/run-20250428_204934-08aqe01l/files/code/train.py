@@ -220,7 +220,7 @@ class Solver:
                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net.module(inputs, targets, epoch)
                 else:
                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net(inputs, targets, epoch)
-                
+                print(feas.size())
                 if not hasComplexEVal:
                     #stats
                     eigvals_norm = outputs / outputs.sum()
@@ -686,8 +686,8 @@ if __name__ == '__main__':
         'n_eig': 4,
         'margin': None,
         'epochs': 100,
-        'k_classes': 40,  # for example
-        'n_samples': 100,   # 5 samples per class
+        'k_classes': 20,  # for example
+        'n_samples': 5,   # 5 samples per class
 
     }
     

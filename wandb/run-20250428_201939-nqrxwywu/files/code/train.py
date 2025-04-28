@@ -220,7 +220,7 @@ class Solver:
                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net.module(inputs, targets, epoch)
                 else:
                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net(inputs, targets, epoch)
-                
+                print(feas.size())
                 if not hasComplexEVal:
                     #stats
                     eigvals_norm = outputs / outputs.sum()
@@ -473,21 +473,17 @@ def train_worker(rank, world_size, config):
     import random
     from collections import defaultdict
     
-    from torch.utils.data import Sampler
-    import torch
-
     class ClassBalancedBatchSampler(Sampler):
-        def __init__(self, dataset, k_classes, n_samples,
-                     world_size=1, rank=0, seed=42):
+        def __init__(self, dataset, k_classes, n_samples, world_size=1, rank=0, seed=42):
             """
-            Class-balanced batch sampler for distributed training.
+            Simple class-balanced batch sampler for distributed training.
             
             Args:
                 dataset: Dataset to sample from
-                k_classes: Number of classes per batch
+                k_classes: Number of classes to sample per batch
                 n_samples: Number of samples per class
-                world_size: Number of processes (GPUs)
-                rank: Local rank of this process
+                world_size: Number of processes in distributed training
+                rank: Rank of current process
                 seed: Random seed
             """
             super().__init__(dataset)
@@ -497,64 +493,57 @@ def train_worker(rank, world_size, config):
             self.world_size = world_size
             self.rank = rank
             self.seed = seed
-            self.epoch = 0  # must be set each epoch manually!
-    
-            # Build mapping from class to list of indices
+            self.epoch = 0
+            
+            # Get class-to-index mapping
             if isinstance(dataset, torch.utils.data.Subset):
                 targets = [dataset.dataset.targets[i] for i in dataset.indices]
             else:
                 targets = dataset.targets
-            
+                
+            # Build class to index mapping
             self.class_to_indices = {}
-            for idx, target in enumerate(targets):
+            for i, target in enumerate(targets):
                 if target not in self.class_to_indices:
                     self.class_to_indices[target] = []
-                self.class_to_indices[target].append(idx)
+                self.class_to_indices[target].append(i)
+                
+            # Get list of classes that have enough samples
+            self.classes = []
+            for cls, indices in self.class_to_indices.items():
+                if len(indices) >= n_samples:
+                    self.classes.append(cls)
+                    
+            assert len(self.classes) >= k_classes, f"Only {len(self.classes)} classes have {n_samples}+ samples"
     
-            # Only keep classes that have enough samples
-            self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
-                                      if len(idxs) >= n_samples]
+        def __iter__(self):
+            # Set random seed for this epoch
+            g = torch.Generator()
+            g.manual_seed(self.seed + self.epoch + self.rank)
             
-            assert len(self.available_classes) >= k_classes, \
-                f"Only {len(self.available_classes)} classes have {n_samples}+ samples, but need {k_classes}"
+            # Sample k_classes from available classes
+            classes = random.sample(self.classes, self.k_classes)
+            
+            # For each class, sample n_samples instances
+            batch = []
+            for cls in classes:
+                indices = self.class_to_indices[cls]
+                batch.extend(random.sample(indices, self.n_samples))
+                
+            # Shuffle the samples
+            batch = torch.tensor(batch)[torch.randperm(len(batch), generator=g)].tolist()
+            
+            # Each process takes its portion
+            local_indices = batch[self.rank::self.world_size]
+            
+            yield local_indices
     
-            # Compute approximately how many batches can fit
-            total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
-            batch_size = self.k_classes * self.n_samples
-            self.batches_per_epoch = total_samples // batch_size
+        def __len__(self):
+            # One batch per epoch in this simplified version
+            return 1
     
         def set_epoch(self, epoch):
             self.epoch = epoch
-    
-        def __iter__(self):
-            g = torch.Generator()
-            g.manual_seed(self.seed + self.epoch + self.rank)
-    
-            all_batches = []
-    
-            while len(all_batches) < self.batches_per_epoch:
-                # Pick k_classes randomly
-                selected_classes = torch.tensor(self.available_classes)
-                selected_classes = selected_classes[torch.randperm(len(selected_classes), generator=g)][:self.k_classes]
-    
-                batch = []
-                for cls in selected_classes.tolist():
-                    indices = self.class_to_indices[cls]
-                    indices_tensor = torch.tensor(indices)
-                    chosen_indices = indices_tensor[torch.randperm(len(indices_tensor), generator=g)][:self.n_samples]
-                    batch.extend(chosen_indices.tolist())
-    
-                all_batches.append(batch)
-    
-            # Shard batches across GPUs
-            local_batches = all_batches[self.rank::self.world_size]
-    
-            for batch in local_batches:
-                yield batch
-    
-        def __len__(self):
-            return self.batches_per_epoch // self.world_size
-
 
 
     # Setup process group
@@ -686,8 +675,8 @@ if __name__ == '__main__':
         'n_eig': 4,
         'margin': None,
         'epochs': 100,
-        'k_classes': 40,  # for example
-        'n_samples': 100,   # 5 samples per class
+        'k_classes': 20,  # for example
+        'n_samples': 5,   # 5 samples per class
 
     }
     
