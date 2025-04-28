@@ -1,0 +1,197 @@
+Submodule apex contains modified content
+diff --git a/apex/setup.py b/apex/setup.py
+index 4aa6616..3e369a7 100644
+--- a/apex/setup.py
++++ b/apex/setup.py
+@@ -37,15 +37,15 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
+     print("\nCompiling cuda extensions with")
+     print(raw_output + "from " + cuda_dir + "/bin\n")
+ 
+-    if (bare_metal_version != torch_binary_version):
+-        raise RuntimeError(
+-            "Cuda extensions are being compiled with a version of Cuda that does "
+-            "not match the version used to compile Pytorch binaries.  "
+-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
+-            + "In some cases, a minor-version mismatch will not cause later errors:  "
+-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
+-            "You can try commenting out this check (at your own risk)."
+-        )
++    # if (bare_metal_version != torch_binary_version):
++    #     raise RuntimeError(
++    #         "Cuda extensions are being compiled with a version of Cuda that does "
++    #         "not match the version used to compile Pytorch binaries.  "
++    #         "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
++    #         + "In some cases, a minor-version mismatch will not cause later errors:  "
++    #         "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
++    #         "You can try commenting out this check (at your own risk)."
++    #     )
+ 
+ 
+ def raise_if_cuda_home_none(global_option: str) -> None:
+diff --git a/train.py b/train.py
+index 12d3069..c643753 100644
+--- a/train.py
++++ b/train.py
+@@ -164,7 +164,7 @@ def get_scaled_lr_sqrt(batch_size: int, base_batch_size: int = 128, base_lr: flo
+     Returns:
+         float: scaled learning rate
+     """
+-    scale = torch.sqrt(torch.tensor(batch_size / base_batch_size, dtype=torch.float32))
++    scale = torch.tensor(batch_size / base_batch_size, dtype=torch.float32)
+     return base_lr * scale.item()
+ 
+ 
+@@ -220,7 +220,7 @@ class Solver:
+                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net.module(inputs, targets, epoch)
+                 else:
+                     hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net(inputs, targets, epoch)
+-                
++                print(feas.size())
+                 if not hasComplexEVal:
+                     #stats
+                     eigvals_norm = outputs / outputs.sum()
+@@ -456,6 +456,65 @@ def cleanup():
+ 
+ 
+ def train_worker(rank, world_size, config):
++    import torch
++    from torch.utils.data import Sampler
++    import random
++    from collections import defaultdict
++    
++    from torch.utils.data import Subset
++
++    class ClassBalancedBatchSampler(Sampler):
++        def __init__(self, dataset, k_classes, n_samples, world_size=1, rank=0, seed=0):
++            self.dataset = dataset
++            self.k = k_classes
++            self.n = n_samples
++            self.batch_size = self.k * self.n
++            self.world_size = world_size
++            self.rank = rank
++            self.seed = seed
++    
++            self.class_to_indices = defaultdict(list)
++    
++            if isinstance(self.dataset, Subset):
++                # If dataset is a Subset, access its dataset and indices
++                targets = [self.dataset.dataset.targets[i] for i in self.dataset.indices]
++                idx_mapping = {i: orig_idx for i, orig_idx in enumerate(self.dataset.indices)}
++            else:
++                targets = self.dataset.targets
++                idx_mapping = {i: i for i in range(len(targets))}
++    
++            for idx, target in enumerate(targets):
++                self.class_to_indices[target].append(idx_mapping[idx])
++    
++            self.classes = list(self.class_to_indices.keys())
++            self.generator = torch.Generator()
++            self.generator.manual_seed(self.seed + self.rank)
++    
++        
++        def __iter__(self):
++            # Create infinite iterator
++            while True:
++                # Sample k classes
++                selected_classes = random.sample(self.classes, self.k)
++        
++                batch = []
++                for cls in selected_classes:
++                    indices = self.class_to_indices[cls]
++                    # If not enough samples, shuffle
++                    if len(indices) < self.n:
++                        indices = indices * (self.n // len(indices) + 1)
++                    selected_indices = random.sample(indices, self.n)
++                    batch.extend(selected_indices)
++                
++                # Now split batch among GPUs
++                batch = batch[self.rank::self.world_size]
++                
++                yield batch
++
++        def __len__(self):
++            # Rough estimate
++            return len(self.dataset) // (self.k * self.n * self.world_size)
++
+     # Setup process group
+     setup(rank, world_size)
+     
+@@ -502,18 +561,25 @@ def train_worker(rank, world_size, config):
+     testset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+ 
+     # Create distributed samplers
+-    train_sampler = DistributedSampler(trainset, num_replicas=world_size, rank=rank)
++    train_sampler = train_sampler = ClassBalancedBatchSampler(
++        dataset=trainset,
++        k_classes=config['k_classes'],
++        n_samples=config['n_samples'],
++        world_size=world_size,
++        rank=rank,
++        seed=config['seed'],
++    )
+     val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
+     test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
+ 
+     # Create dataloaders
+-    trainloader = torch.utils.data.DataLoader(
+-        trainset, 
+-        batch_size=config['batch_size'],
+-        sampler=train_sampler,
++    trainloader = trainloader = torch.utils.data.DataLoader(
++        trainset,
++        batch_sampler=train_sampler,
+         num_workers=config['num_workers'],
+         pin_memory=True,
+     )
++
+     
+     valloader = torch.utils.data.DataLoader(
+         valset, 
+@@ -545,8 +611,7 @@ def train_worker(rank, world_size, config):
+         n_classes=config['n_classes'],
+         lda_args=lda_args,
+         local_rank=rank,
+-        world_size=world_size,
+-        lr =  get_scaled_lr_sqrt(config['batch_size']) 
++        world_size=world_size
+     )
+     
+     # Train
+@@ -561,13 +626,13 @@ def train_worker(rank, world_size, config):
+ 
+ if __name__ == '__main__':
+     config = {
+-        'wandb_project': "DeepLDA",
++        'wandb_project': "DELETEME",#"DeepLDA",
+         'wandb_entity': "gerardo-pastrana-c3-ai",
+         'wandb_group': "gapLoss",
+         'seed': 42,
+         'n_classes': 1000,
+         'train_val_split': 0.1,
+-        'batch_size': 2**12,
++        'batch_size': 4096,
+         'num_workers': 1,  
+         'train_dir': 'datasets/imagenet_full_size/061417/train',
+         'val_dir': 'datasets/imagenet_full_size/061417/val',
+@@ -577,6 +642,9 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 100,
++        'k_classes': 20,  # for example
++        'n_samples': 5,   # 5 samples per class
++
+     }
+     
+     # Number of available GPUs
+diff --git a/wandb/latest-run b/wandb/latest-run
+index cd3b6a3..0420ecc 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250427_014331-esu44v4t
+\ No newline at end of file
++run-20250428_191307-n7zden2z
+\ No newline at end of file
+diff --git a/wandb/run-20250427_014331-esu44v4t/run-esu44v4t.wandb b/wandb/run-20250427_014331-esu44v4t/run-esu44v4t.wandb
+index 670f264..c286baf 100644
+Binary files a/wandb/run-20250427_014331-esu44v4t/run-esu44v4t.wandb and b/wandb/run-20250427_014331-esu44v4t/run-esu44v4t.wandb differ
