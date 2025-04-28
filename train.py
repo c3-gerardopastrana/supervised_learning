@@ -1,6 +1,7 @@
 import os
 import random
 import numpy as np
+from collections import defaultdict
 np.set_printoptions(precision=4, suppress=True)
 from sklearn.metrics import accuracy_score
 from tqdm.notebook import tqdm
@@ -18,7 +19,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Sampler, Subset
 from torch.utils.checkpoint import checkpoint
 
 
@@ -457,25 +458,7 @@ def cleanup():
 
 
 def train_worker(rank, world_size, config):
-    import torch
-    from torch.utils.data import Sampler
-    import random
-    from collections import defaultdict
     
-    from torch.utils.data import Subset
-
-    from torch.utils.data import Sampler
-    
-    import random
-    from collections import defaultdict
-
-    from torch.utils.data import Sampler
-    import random
-    from collections import defaultdict
-    
-    from torch.utils.data import Sampler
-    import torch
-
     class ClassBalancedBatchSampler(Sampler):
         def __init__(self, dataset, k_classes, n_samples,
                      world_size=1, rank=0, seed=42):
@@ -593,14 +576,9 @@ def train_worker(rank, world_size, config):
     ])
 
     # Create datasets
-    full_trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
-    N = len(full_trainset)
-    Ntrain, Nval = N - int(N * config['train_val_split']), int(N * config['train_val_split'])
-    
-    # Use random seed for reproducibility across processes
-    generator = torch.Generator().manual_seed(config['seed'])
-    trainset, valset = random_split(full_trainset, [Ntrain, Nval], generator=generator)
-    testset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+    trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+    valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+    testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
 
     # Create distributed samplers
     train_sampler = ClassBalancedBatchSampler(
@@ -680,14 +658,15 @@ if __name__ == '__main__':
         'num_workers': 1,  
         'train_dir': 'datasets/imagenet_full_size/061417/train',
         'val_dir': 'datasets/imagenet_full_size/061417/val',
+        'test_dir': 'datasets/imagenet_full_size/061417/test',
         'model_path': 'models/deeplda_best.pth',
         'loss': 'LDA',
         'lamb': 0.1,
         'n_eig': 4,
         'margin': None,
         'epochs': 100,
-        'k_classes': 40,  # for example
-        'n_samples': 100,   # 5 samples per class
+        'k_classes': 100, 
+        'n_samples': 40, 
 
     }
     

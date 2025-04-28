@@ -1,0 +1,385 @@
+diff --git a/download_imagenet-2.ipynb b/download_imagenet-2.ipynb
+index b78caa2..4b0870a 100644
+--- a/download_imagenet-2.ipynb
++++ b/download_imagenet-2.ipynb
+@@ -2,7 +2,7 @@
+  "cells": [
+   {
+    "cell_type": "code",
+-   "execution_count": 3,
++   "execution_count": 1,
+    "id": "0dd1f94e-0ba1-4ed0-9c25-de4bd9219f15",
+    "metadata": {},
+    "outputs": [
+@@ -24,7 +24,7 @@
+       "Requirement already satisfied: multiprocess<0.70.17 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (0.70.16)\n",
+       "Requirement already satisfied: fsspec<=2024.12.0,>=2023.1.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from fsspec[http]<=2024.12.0,>=2023.1.0->datasets) (2024.12.0)\n",
+       "Requirement already satisfied: aiohttp in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (3.11.16)\n",
+-      "Requirement already satisfied: huggingface-hub>=0.24.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (0.30.2)\n",
++      "Requirement already satisfied: huggingface-hub>=0.24.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (0.30.1)\n",
+       "Requirement already satisfied: packaging in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (24.2)\n",
+       "Requirement already satisfied: pyyaml>=5.1 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (6.0.2)\n",
+       "Requirement already satisfied: aiohappyeyeballs>=2.3.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (2.6.1)\n",
+@@ -32,9 +32,9 @@
+       "Requirement already satisfied: async-timeout<6.0,>=4.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (5.0.1)\n",
+       "Requirement already satisfied: attrs>=17.3.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (25.3.0)\n",
+       "Requirement already satisfied: frozenlist>=1.1.1 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (1.5.0)\n",
+-      "Requirement already satisfied: multidict<7.0,>=4.5 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (6.4.2)\n",
++      "Requirement already satisfied: multidict<7.0,>=4.5 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (6.3.2)\n",
+       "Requirement already satisfied: propcache>=0.2.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (0.3.1)\n",
+-      "Requirement already satisfied: yarl<2.0,>=1.17.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (1.19.0)\n",
++      "Requirement already satisfied: yarl<2.0,>=1.17.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (1.18.3)\n",
+       "Requirement already satisfied: typing-extensions>=3.7.4.3 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from huggingface-hub>=0.24.0->datasets) (4.13.0)\n",
+       "Requirement already satisfied: charset-normalizer<4,>=2 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from requests>=2.32.2->datasets) (3.4.1)\n",
+       "Requirement already satisfied: idna<4,>=2.5 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from requests>=2.32.2->datasets) (3.10)\n",
+@@ -51,7 +51,7 @@
+     {
+      "data": {
+       "application/vnd.jupyter.widget-view+json": {
+-       "model_id": "6b72214da35f434fbf17af7e688d5e23",
++       "model_id": "71a2ffed656b4cb6bff451e9d2183b81",
+        "version_major": 2,
+        "version_minor": 0
+       },
+@@ -65,7 +65,7 @@
+     {
+      "data": {
+       "application/vnd.jupyter.widget-view+json": {
+-       "model_id": "a8232c56517547f5a4039dee2673397f",
++       "model_id": "033b07e13bd748189024981dc1db5b2c",
+        "version_major": 2,
+        "version_minor": 0
+       },
+@@ -78,7 +78,7 @@
+     }
+    ],
+    "source": [
+-    "!pip install pillow datasets\n",
++    "#!pip install pillow datasets\n",
+     "from datasets import load_dataset\n",
+     "import os\n",
+     "from PIL import Image\n",
+@@ -92,7 +92,7 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": 9,
++   "execution_count": 2,
+    "id": "b8bde606-5f43-45d0-bcf4-00d0cdf090f8",
+    "metadata": {},
+    "outputs": [
+@@ -100,156 +100,24 @@
+      "name": "stdout",
+      "output_type": "stream",
+      "text": [
+-      "Saved 0 images...\n",
+-      "Saved 1000 images...\n",
+-      "Saved 2000 images...\n",
+-      "Saved 3000 images...\n",
+-      "Saved 4000 images...\n",
+-      "Saved 5000 images...\n",
+-      "Saved 6000 images...\n",
+-      "Saved 7000 images...\n",
+-      "Saved 8000 images...\n",
+-      "Saved 9000 images...\n",
+-      "Saved 10000 images...\n",
+-      "Saved 11000 images...\n",
+-      "Saved 12000 images...\n",
+-      "Saved 13000 images...\n",
+-      "Saved 14000 images...\n",
+-      "Saved 15000 images...\n",
+-      "Saved 16000 images...\n",
+-      "Saved 17000 images...\n",
+-      "Saved 18000 images...\n",
+-      "Saved 19000 images...\n",
+-      "Saved 20000 images...\n",
+-      "Saved 21000 images...\n",
+-      "Saved 22000 images...\n",
+-      "Saved 23000 images...\n",
+-      "Saved 24000 images...\n",
+-      "Saved 25000 images...\n",
+-      "Saved 26000 images...\n",
+-      "Saved 27000 images...\n",
+-      "Saved 28000 images...\n",
+-      "Saved 29000 images...\n",
+-      "Saved 30000 images...\n",
+-      "Saved 31000 images...\n",
+-      "Saved 32000 images...\n",
+-      "Saved 33000 images...\n",
+-      "Saved 34000 images...\n",
+-      "Saved 35000 images...\n",
+-      "Saved 36000 images...\n",
+-      "Saved 37000 images...\n",
+-      "Saved 38000 images...\n",
+-      "Saved 39000 images...\n",
+-      "Saved 40000 images...\n",
+-      "Saved 41000 images...\n",
+-      "Saved 42000 images...\n",
+-      "Saved 43000 images...\n",
+-      "Saved 44000 images...\n",
+-      "Saved 45000 images...\n",
+-      "Saved 46000 images...\n",
+-      "Saved 47000 images...\n",
+-      "Saved 48000 images...\n",
+-      "Saved 49000 images...\n",
+-      "Saved 0 images...\n",
+-      "Saved 1000 images...\n",
+-      "Saved 2000 images...\n",
+-      "Saved 3000 images...\n",
+-      "Saved 4000 images...\n",
+-      "Saved 5000 images...\n",
+-      "Saved 6000 images...\n",
+-      "Saved 7000 images...\n",
+-      "Saved 8000 images...\n",
+-      "Saved 9000 images...\n",
+-      "Saved 10000 images...\n",
+-      "Saved 11000 images...\n",
+-      "Saved 12000 images...\n",
+-      "Saved 13000 images...\n",
+-      "Saved 14000 images...\n",
+-      "Saved 15000 images...\n",
+-      "Saved 16000 images...\n",
+-      "Saved 17000 images...\n",
+-      "Saved 18000 images...\n",
+-      "Saved 19000 images...\n",
+-      "Saved 20000 images...\n",
+-      "Saved 21000 images...\n",
+-      "Saved 22000 images...\n",
+-      "Saved 23000 images...\n",
+-      "Saved 24000 images...\n",
+-      "Saved 25000 images...\n",
+-      "Saved 26000 images...\n",
+-      "Saved 27000 images...\n",
+-      "Saved 28000 images...\n",
+-      "Saved 29000 images...\n",
+-      "Saved 30000 images...\n",
+-      "Saved 31000 images...\n",
+-      "Saved 32000 images...\n",
+-      "Saved 33000 images...\n",
+-      "Saved 34000 images...\n",
+-      "Saved 35000 images...\n",
+-      "Saved 36000 images...\n",
+-      "Saved 37000 images...\n",
+-      "Saved 38000 images...\n",
+-      "Saved 39000 images...\n",
+-      "Saved 40000 images...\n",
+-      "Saved 41000 images...\n",
+-      "Saved 42000 images...\n",
+-      "Saved 43000 images...\n",
+-      "Saved 44000 images...\n",
+-      "Saved 45000 images...\n",
+-      "Saved 46000 images...\n",
+-      "Saved 47000 images...\n",
+-      "Saved 48000 images...\n",
+-      "Saved 49000 images...\n",
+-      "Saved 50000 images...\n",
+-      "Saved 51000 images...\n",
+-      "Saved 52000 images...\n",
+-      "Saved 53000 images...\n",
+-      "Saved 54000 images...\n",
+-      "Saved 55000 images...\n",
+-      "Saved 56000 images...\n",
+-      "Saved 57000 images...\n",
+-      "Saved 58000 images...\n",
+-      "Saved 59000 images...\n",
+-      "Saved 60000 images...\n",
+-      "Saved 61000 images...\n",
+-      "Saved 62000 images...\n",
+-      "Saved 63000 images...\n",
+-      "Saved 64000 images...\n",
+-      "Saved 65000 images...\n",
+-      "Saved 66000 images...\n",
+-      "Saved 67000 images...\n",
+-      "Saved 68000 images...\n",
+-      "Saved 69000 images...\n",
+-      "Saved 70000 images...\n",
+-      "Saved 71000 images...\n",
+-      "Saved 72000 images...\n",
+-      "Saved 73000 images...\n",
+-      "Saved 74000 images...\n",
+-      "Saved 75000 images...\n",
+-      "Saved 76000 images...\n",
+-      "Saved 77000 images...\n",
+-      "Saved 78000 images...\n",
+-      "Saved 79000 images...\n",
+-      "Saved 80000 images...\n",
+-      "Saved 81000 images...\n",
+-      "Saved 82000 images...\n",
+-      "Saved 83000 images...\n",
+-      "Saved 84000 images...\n",
+-      "Saved 85000 images...\n",
+-      "Saved 86000 images...\n",
+-      "Saved 87000 images...\n",
+-      "Saved 88000 images...\n",
+-      "Saved 89000 images...\n",
+-      "Saved 90000 images...\n",
+-      "Saved 91000 images...\n",
+-      "Saved 92000 images...\n",
+-      "Saved 93000 images...\n",
+-      "Saved 94000 images...\n",
+-      "Saved 95000 images...\n",
+-      "Saved 96000 images...\n",
+-      "Saved 97000 images...\n",
+-      "Saved 98000 images...\n",
+-      "Saved 99000 images...\n"
++      "Saved 0 images... (Skipped: 0)\n",
++      "Processing complete. Total images skipped: 0\n",
++      "Saved 0 images... (Skipped: 0)\n"
++     ]
++    },
++    {
++     "name": "stderr",
++     "output_type": "stream",
++     "text": [
++      "/root/miniconda3/envs/myenv/lib/python3.10/site-packages/PIL/TiffImagePlugin.py:949: UserWarning: Corrupt EXIF data.  Expecting to read 2 bytes but only got 0. \n",
++      "  warnings.warn(str(msg))\n"
++     ]
++    },
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "Processing complete. Total images skipped: 0\n"
+      ]
+     }
+    ],
+@@ -287,7 +155,7 @@
+     "\n",
+     "\n",
+     "# Save the ImageNet train dataset in ImageNet folder format\n",
+-    "save_imagenet_format(train_dataset, \"datasets/imagenet_full_size/061417/train\")\n",
++    "#save_imagenet_format(train_dataset, \"datasets/imagenet_full_size/061417/train\")\n",
+     "\n",
+     "# Save the ImageNet validation dataset in ImageNet folder format\n",
+     "save_imagenet_format(val_dataset, \"datasets/imagenet_full_size/061417/val\")\n",
+@@ -299,7 +167,7 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": 12,
++   "execution_count": 4,
+    "id": "84a05850-e80e-43b9-a6a1-b7cfd1499c7a",
+    "metadata": {},
+    "outputs": [
+@@ -307,9 +175,8 @@
+      "name": "stdout",
+      "output_type": "stream",
+      "text": [
+-      "Total images in datasets/imagenet_full_size/061417/train: 1159338\n",
+-      "Total images in datasets/imagenet_full_size/061417/val: 50000\n",
+-      "Total images in datasets/imagenet_full_size/061417/test: 100000\n"
++      "Total images in data/datasets/imagenet_full_size/061417/val: 0\n",
++      "Total images in data/datasets/imagenet_full_size/061417/test: 0\n"
+      ]
+     }
+    ],
+@@ -324,15 +191,11 @@
+     "                image_count += 1\n",
+     "    return image_count\n",
+     "\n",
+-    "directory = \"datasets/imagenet_full_size/061417/train\"\n",
+-    "image_count = count_images(directory)\n",
+-    "print(f\"Total images in {directory}: {image_count}\")\n",
+-    "\n",
+-    "directory = \"datasets/imagenet_full_size/061417/val\"\n",
++    "directory = \"data/datasets/imagenet_full_size/061417/val\"\n",
+     "image_count = count_images(directory)\n",
+     "print(f\"Total images in {directory}: {image_count}\")\n",
+     "\n",
+-    "directory = \"datasets/imagenet_full_size/061417/test\"\n",
++    "directory = \"data/datasets/imagenet_full_size/061417/test\"\n",
+     "image_count = count_images(directory)\n",
+     "print(f\"Total images in {directory}: {image_count}\")"
+    ]
+diff --git a/train.py b/train.py
+index 86531ff..9ecf72c 100644
+--- a/train.py
++++ b/train.py
+@@ -1,6 +1,7 @@
+ import os
+ import random
+ import numpy as np
++from collections import defaultdict
+ np.set_printoptions(precision=4, suppress=True)
+ from sklearn.metrics import accuracy_score
+ from tqdm.notebook import tqdm
+@@ -18,7 +19,7 @@ import torch.distributed as dist
+ import torch.multiprocessing as mp
+ from torch.nn.parallel import DistributedDataParallel as DDP
+ from torch.utils.data.distributed import DistributedSampler
+-from torch.utils.data import DataLoader, random_split
++from torch.utils.data import DataLoader, random_split, Sampler, Subset
+ from torch.utils.checkpoint import checkpoint
+ 
+ 
+@@ -457,25 +458,7 @@ def cleanup():
+ 
+ 
+ def train_worker(rank, world_size, config):
+-    import torch
+-    from torch.utils.data import Sampler
+-    import random
+-    from collections import defaultdict
+     
+-    from torch.utils.data import Subset
+-
+-    from torch.utils.data import Sampler
+-    
+-    import random
+-    from collections import defaultdict
+-
+-    from torch.utils.data import Sampler
+-    import random
+-    from collections import defaultdict
+-    
+-    from torch.utils.data import Sampler
+-    import torch
+-
+     class ClassBalancedBatchSampler(Sampler):
+         def __init__(self, dataset, k_classes, n_samples,
+                      world_size=1, rank=0, seed=42):
+@@ -593,14 +576,9 @@ def train_worker(rank, world_size, config):
+     ])
+ 
+     # Create datasets
+-    full_trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+-    N = len(full_trainset)
+-    Ntrain, Nval = N - int(N * config['train_val_split']), int(N * config['train_val_split'])
+-    
+-    # Use random seed for reproducibility across processes
+-    generator = torch.Generator().manual_seed(config['seed'])
+-    trainset, valset = random_split(full_trainset, [Ntrain, Nval], generator=generator)
+-    testset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+ 
+     # Create distributed samplers
+     train_sampler = ClassBalancedBatchSampler(
+@@ -680,14 +658,15 @@ if __name__ == '__main__':
+         'num_workers': 1,  
+         'train_dir': 'datasets/imagenet_full_size/061417/train',
+         'val_dir': 'datasets/imagenet_full_size/061417/val',
++        'test_dir': 'datasets/imagenet_full_size/061417/test',
+         'model_path': 'models/deeplda_best.pth',
+         'loss': 'LDA',
+         'lamb': 0.1,
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 100,
+-        'k_classes': 40,  # for example
+-        'n_samples': 100,   # 5 samples per class
++        'k_classes': 100, 
++        'n_samples': 100, 
+ 
+     }
+     
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 3ca90c6..e42de25 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250428_205923-w58ooppt
+\ No newline at end of file
++run-20250428_212906-20e6u91w
+\ No newline at end of file

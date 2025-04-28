@@ -1,0 +1,434 @@
+diff --git a/download_imagenet-2.ipynb b/download_imagenet-2.ipynb
+index 6de9aeb..68f5cff 100644
+--- a/download_imagenet-2.ipynb
++++ b/download_imagenet-2.ipynb
+@@ -2,7 +2,7 @@
+  "cells": [
+   {
+    "cell_type": "code",
+-   "execution_count": 3,
++   "execution_count": 1,
+    "id": "0dd1f94e-0ba1-4ed0-9c25-de4bd9219f15",
+    "metadata": {},
+    "outputs": [
+@@ -24,7 +24,7 @@
+       "Requirement already satisfied: multiprocess<0.70.17 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (0.70.16)\n",
+       "Requirement already satisfied: fsspec<=2024.12.0,>=2023.1.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from fsspec[http]<=2024.12.0,>=2023.1.0->datasets) (2024.12.0)\n",
+       "Requirement already satisfied: aiohttp in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (3.11.16)\n",
+-      "Requirement already satisfied: huggingface-hub>=0.24.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (0.30.2)\n",
++      "Requirement already satisfied: huggingface-hub>=0.24.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (0.30.1)\n",
+       "Requirement already satisfied: packaging in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (24.2)\n",
+       "Requirement already satisfied: pyyaml>=5.1 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from datasets) (6.0.2)\n",
+       "Requirement already satisfied: aiohappyeyeballs>=2.3.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (2.6.1)\n",
+@@ -32,9 +32,9 @@
+       "Requirement already satisfied: async-timeout<6.0,>=4.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (5.0.1)\n",
+       "Requirement already satisfied: attrs>=17.3.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (25.3.0)\n",
+       "Requirement already satisfied: frozenlist>=1.1.1 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (1.5.0)\n",
+-      "Requirement already satisfied: multidict<7.0,>=4.5 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (6.4.2)\n",
++      "Requirement already satisfied: multidict<7.0,>=4.5 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (6.3.2)\n",
+       "Requirement already satisfied: propcache>=0.2.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (0.3.1)\n",
+-      "Requirement already satisfied: yarl<2.0,>=1.17.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (1.19.0)\n",
++      "Requirement already satisfied: yarl<2.0,>=1.17.0 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from aiohttp->datasets) (1.18.3)\n",
+       "Requirement already satisfied: typing-extensions>=3.7.4.3 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from huggingface-hub>=0.24.0->datasets) (4.13.0)\n",
+       "Requirement already satisfied: charset-normalizer<4,>=2 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from requests>=2.32.2->datasets) (3.4.1)\n",
+       "Requirement already satisfied: idna<4,>=2.5 in /root/miniconda3/envs/myenv/lib/python3.10/site-packages (from requests>=2.32.2->datasets) (3.10)\n",
+@@ -51,7 +51,7 @@
+     {
+      "data": {
+       "application/vnd.jupyter.widget-view+json": {
+-       "model_id": "6b72214da35f434fbf17af7e688d5e23",
++       "model_id": "71a2ffed656b4cb6bff451e9d2183b81",
+        "version_major": 2,
+        "version_minor": 0
+       },
+@@ -65,7 +65,7 @@
+     {
+      "data": {
+       "application/vnd.jupyter.widget-view+json": {
+-       "model_id": "a8232c56517547f5a4039dee2673397f",
++       "model_id": "033b07e13bd748189024981dc1db5b2c",
+        "version_major": 2,
+        "version_minor": 0
+       },
+@@ -78,7 +78,7 @@
+     }
+    ],
+    "source": [
+-    "!pip install pillow datasets\n",
++    "#!pip install pillow datasets\n",
+     "from datasets import load_dataset\n",
+     "import os\n",
+     "from PIL import Image\n",
+@@ -92,7 +92,7 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": 9,
++   "execution_count": 2,
+    "id": "b8bde606-5f43-45d0-bcf4-00d0cdf090f8",
+    "metadata": {},
+    "outputs": [
+@@ -100,156 +100,24 @@
+      "name": "stdout",
+      "output_type": "stream",
+      "text": [
+-      "Saved 0 images...\n",
+-      "Saved 1000 images...\n",
+-      "Saved 2000 images...\n",
+-      "Saved 3000 images...\n",
+-      "Saved 4000 images...\n",
+-      "Saved 5000 images...\n",
+-      "Saved 6000 images...\n",
+-      "Saved 7000 images...\n",
+-      "Saved 8000 images...\n",
+-      "Saved 9000 images...\n",
+-      "Saved 10000 images...\n",
+-      "Saved 11000 images...\n",
+-      "Saved 12000 images...\n",
+-      "Saved 13000 images...\n",
+-      "Saved 14000 images...\n",
+-      "Saved 15000 images...\n",
+-      "Saved 16000 images...\n",
+-      "Saved 17000 images...\n",
+-      "Saved 18000 images...\n",
+-      "Saved 19000 images...\n",
+-      "Saved 20000 images...\n",
+-      "Saved 21000 images...\n",
+-      "Saved 22000 images...\n",
+-      "Saved 23000 images...\n",
+-      "Saved 24000 images...\n",
+-      "Saved 25000 images...\n",
+-      "Saved 26000 images...\n",
+-      "Saved 27000 images...\n",
+-      "Saved 28000 images...\n",
+-      "Saved 29000 images...\n",
+-      "Saved 30000 images...\n",
+-      "Saved 31000 images...\n",
+-      "Saved 32000 images...\n",
+-      "Saved 33000 images...\n",
+-      "Saved 34000 images...\n",
+-      "Saved 35000 images...\n",
+-      "Saved 36000 images...\n",
+-      "Saved 37000 images...\n",
+-      "Saved 38000 images...\n",
+-      "Saved 39000 images...\n",
+-      "Saved 40000 images...\n",
+-      "Saved 41000 images...\n",
+-      "Saved 42000 images...\n",
+-      "Saved 43000 images...\n",
+-      "Saved 44000 images...\n",
+-      "Saved 45000 images...\n",
+-      "Saved 46000 images...\n",
+-      "Saved 47000 images...\n",
+-      "Saved 48000 images...\n",
+-      "Saved 49000 images...\n",
+-      "Saved 0 images...\n",
+-      "Saved 1000 images...\n",
+-      "Saved 2000 images...\n",
+-      "Saved 3000 images...\n",
+-      "Saved 4000 images...\n",
+-      "Saved 5000 images...\n",
+-      "Saved 6000 images...\n",
+-      "Saved 7000 images...\n",
+-      "Saved 8000 images...\n",
+-      "Saved 9000 images...\n",
+-      "Saved 10000 images...\n",
+-      "Saved 11000 images...\n",
+-      "Saved 12000 images...\n",
+-      "Saved 13000 images...\n",
+-      "Saved 14000 images...\n",
+-      "Saved 15000 images...\n",
+-      "Saved 16000 images...\n",
+-      "Saved 17000 images...\n",
+-      "Saved 18000 images...\n",
+-      "Saved 19000 images...\n",
+-      "Saved 20000 images...\n",
+-      "Saved 21000 images...\n",
+-      "Saved 22000 images...\n",
+-      "Saved 23000 images...\n",
+-      "Saved 24000 images...\n",
+-      "Saved 25000 images...\n",
+-      "Saved 26000 images...\n",
+-      "Saved 27000 images...\n",
+-      "Saved 28000 images...\n",
+-      "Saved 29000 images...\n",
+-      "Saved 30000 images...\n",
+-      "Saved 31000 images...\n",
+-      "Saved 32000 images...\n",
+-      "Saved 33000 images...\n",
+-      "Saved 34000 images...\n",
+-      "Saved 35000 images...\n",
+-      "Saved 36000 images...\n",
+-      "Saved 37000 images...\n",
+-      "Saved 38000 images...\n",
+-      "Saved 39000 images...\n",
+-      "Saved 40000 images...\n",
+-      "Saved 41000 images...\n",
+-      "Saved 42000 images...\n",
+-      "Saved 43000 images...\n",
+-      "Saved 44000 images...\n",
+-      "Saved 45000 images...\n",
+-      "Saved 46000 images...\n",
+-      "Saved 47000 images...\n",
+-      "Saved 48000 images...\n",
+-      "Saved 49000 images...\n",
+-      "Saved 50000 images...\n",
+-      "Saved 51000 images...\n",
+-      "Saved 52000 images...\n",
+-      "Saved 53000 images...\n",
+-      "Saved 54000 images...\n",
+-      "Saved 55000 images...\n",
+-      "Saved 56000 images...\n",
+-      "Saved 57000 images...\n",
+-      "Saved 58000 images...\n",
+-      "Saved 59000 images...\n",
+-      "Saved 60000 images...\n",
+-      "Saved 61000 images...\n",
+-      "Saved 62000 images...\n",
+-      "Saved 63000 images...\n",
+-      "Saved 64000 images...\n",
+-      "Saved 65000 images...\n",
+-      "Saved 66000 images...\n",
+-      "Saved 67000 images...\n",
+-      "Saved 68000 images...\n",
+-      "Saved 69000 images...\n",
+-      "Saved 70000 images...\n",
+-      "Saved 71000 images...\n",
+-      "Saved 72000 images...\n",
+-      "Saved 73000 images...\n",
+-      "Saved 74000 images...\n",
+-      "Saved 75000 images...\n",
+-      "Saved 76000 images...\n",
+-      "Saved 77000 images...\n",
+-      "Saved 78000 images...\n",
+-      "Saved 79000 images...\n",
+-      "Saved 80000 images...\n",
+-      "Saved 81000 images...\n",
+-      "Saved 82000 images...\n",
+-      "Saved 83000 images...\n",
+-      "Saved 84000 images...\n",
+-      "Saved 85000 images...\n",
+-      "Saved 86000 images...\n",
+-      "Saved 87000 images...\n",
+-      "Saved 88000 images...\n",
+-      "Saved 89000 images...\n",
+-      "Saved 90000 images...\n",
+-      "Saved 91000 images...\n",
+-      "Saved 92000 images...\n",
+-      "Saved 93000 images...\n",
+-      "Saved 94000 images...\n",
+-      "Saved 95000 images...\n",
+-      "Saved 96000 images...\n",
+-      "Saved 97000 images...\n",
+-      "Saved 98000 images...\n",
+-      "Saved 99000 images...\n"
++      "Saved 0 images... (Skipped: 0)\n",
++      "Processing complete. Total images skipped: 0\n",
++      "Saved 0 images... (Skipped: 0)\n"
++     ]
++    },
++    {
++     "name": "stderr",
++     "output_type": "stream",
++     "text": [
++      "/root/miniconda3/envs/myenv/lib/python3.10/site-packages/PIL/TiffImagePlugin.py:949: UserWarning: Corrupt EXIF data.  Expecting to read 2 bytes but only got 0. \n",
++      "  warnings.warn(str(msg))\n"
++     ]
++    },
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "Processing complete. Total images skipped: 0\n"
+      ]
+     }
+    ],
+@@ -287,7 +155,7 @@
+     "\n",
+     "\n",
+     "# Save the ImageNet train dataset in ImageNet folder format\n",
+-    "save_imagenet_format(train_dataset, \"datasets/imagenet_full_size/061417/train\")\n",
++    "#save_imagenet_format(train_dataset, \"datasets/imagenet_full_size/061417/train\")\n",
+     "\n",
+     "# Save the ImageNet validation dataset in ImageNet folder format\n",
+     "save_imagenet_format(val_dataset, \"datasets/imagenet_full_size/061417/val\")\n",
+@@ -299,7 +167,7 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": 11,
++   "execution_count": 3,
+    "id": "84a05850-e80e-43b9-a6a1-b7cfd1499c7a",
+    "metadata": {},
+    "outputs": [
+diff --git a/poetry.lock b/poetry.lock
+index 8d53969..9f1489e 100644
+--- a/poetry.lock
++++ b/poetry.lock
+@@ -15,6 +15,29 @@ files = [
+ [package.dependencies]
+ typing-extensions = {version = ">=4.0.0", markers = "python_version < \"3.9\""}
+ 
++[[package]]
++name = "beautifulsoup4"
++version = "4.13.4"
++description = "Screen-scraping library"
++optional = false
++python-versions = ">=3.7.0"
++groups = ["main"]
++files = [
++    {file = "beautifulsoup4-4.13.4-py3-none-any.whl", hash = "sha256:9bbbb14bfde9d79f38b8cd5f8c7c85f4b8f2523190ebed90e950a8dea4cb1c4b"},
++    {file = "beautifulsoup4-4.13.4.tar.gz", hash = "sha256:dbb3c4e1ceae6aefebdaf2423247260cd062430a410e38c66f2baa50a8437195"},
++]
++
++[package.dependencies]
++soupsieve = ">1.2"
++typing-extensions = ">=4.0.0"
++
++[package.extras]
++cchardet = ["cchardet"]
++chardet = ["chardet"]
++charset-normalizer = ["charset-normalizer"]
++html5lib = ["html5lib"]
++lxml = ["lxml"]
++
+ [[package]]
+ name = "certifi"
+ version = "2025.1.31"
+@@ -340,6 +363,21 @@ gitdb = ">=4.0.1,<5"
+ doc = ["sphinx (>=7.1.2,<7.2)", "sphinx-autodoc-typehints", "sphinx_rtd_theme"]
+ test = ["coverage[toml]", "ddt (>=1.1.1,!=1.4.3)", "mock ; python_version < \"3.8\"", "mypy", "pre-commit", "pytest (>=7.3.1)", "pytest-cov", "pytest-instafail", "pytest-mock", "pytest-sugar", "typing-extensions ; python_version < \"3.11\""]
+ 
++[[package]]
++name = "google"
++version = "3.0.0"
++description = "Python bindings to the Google search engine."
++optional = false
++python-versions = "*"
++groups = ["main"]
++files = [
++    {file = "google-3.0.0-py2.py3-none-any.whl", hash = "sha256:889cf695f84e4ae2c55fbc0cfdaf4c1e729417fa52ab1db0485202ba173e4935"},
++    {file = "google-3.0.0.tar.gz", hash = "sha256:143530122ee5130509ad5e989f0512f7cb218b2d4eddbafbad40fd10e8d8ccbe"},
++]
++
++[package.dependencies]
++beautifulsoup4 = "*"
++
+ [[package]]
+ name = "hupper"
+ version = "1.12.1"
+@@ -1193,23 +1231,34 @@ type = ["mypy (>=1.14.1)"]
+ 
+ [[package]]
+ name = "protobuf"
+-version = "5.29.4"
+-description = ""
++version = "3.20.3"
++description = "Protocol Buffers"
+ optional = false
+-python-versions = ">=3.8"
++python-versions = ">=3.7"
+ groups = ["main"]
+ files = [
+-    {file = "protobuf-5.29.4-cp310-abi3-win32.whl", hash = "sha256:13eb236f8eb9ec34e63fc8b1d6efd2777d062fa6aaa68268fb67cf77f6839ad7"},
+-    {file = "protobuf-5.29.4-cp310-abi3-win_amd64.whl", hash = "sha256:bcefcdf3976233f8a502d265eb65ea740c989bacc6c30a58290ed0e519eb4b8d"},
+-    {file = "protobuf-5.29.4-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:307ecba1d852ec237e9ba668e087326a67564ef83e45a0189a772ede9e854dd0"},
+-    {file = "protobuf-5.29.4-cp38-abi3-manylinux2014_aarch64.whl", hash = "sha256:aec4962f9ea93c431d5714ed1be1c93f13e1a8618e70035ba2b0564d9e633f2e"},
+-    {file = "protobuf-5.29.4-cp38-abi3-manylinux2014_x86_64.whl", hash = "sha256:d7d3f7d1d5a66ed4942d4fefb12ac4b14a29028b209d4bfb25c68ae172059922"},
+-    {file = "protobuf-5.29.4-cp38-cp38-win32.whl", hash = "sha256:1832f0515b62d12d8e6ffc078d7e9eb06969aa6dc13c13e1036e39d73bebc2de"},
+-    {file = "protobuf-5.29.4-cp38-cp38-win_amd64.whl", hash = "sha256:476cb7b14914c780605a8cf62e38c2a85f8caff2e28a6a0bad827ec7d6c85d68"},
+-    {file = "protobuf-5.29.4-cp39-cp39-win32.whl", hash = "sha256:fd32223020cb25a2cc100366f1dedc904e2d71d9322403224cdde5fdced0dabe"},
+-    {file = "protobuf-5.29.4-cp39-cp39-win_amd64.whl", hash = "sha256:678974e1e3a9b975b8bc2447fca458db5f93a2fb6b0c8db46b6675b5b5346812"},
+-    {file = "protobuf-5.29.4-py3-none-any.whl", hash = "sha256:3fde11b505e1597f71b875ef2fc52062b6a9740e5f7c8997ce878b6009145862"},
+-    {file = "protobuf-5.29.4.tar.gz", hash = "sha256:4f1dfcd7997b31ef8f53ec82781ff434a28bf71d9102ddde14d076adcfc78c99"},
++    {file = "protobuf-3.20.3-cp310-cp310-manylinux2014_aarch64.whl", hash = "sha256:f4bd856d702e5b0d96a00ec6b307b0f51c1982c2bf9c0052cf9019e9a544ba99"},
++    {file = "protobuf-3.20.3-cp310-cp310-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:9aae4406ea63d825636cc11ffb34ad3379335803216ee3a856787bcf5ccc751e"},
++    {file = "protobuf-3.20.3-cp310-cp310-win32.whl", hash = "sha256:28545383d61f55b57cf4df63eebd9827754fd2dc25f80c5253f9184235db242c"},
++    {file = "protobuf-3.20.3-cp310-cp310-win_amd64.whl", hash = "sha256:67a3598f0a2dcbc58d02dd1928544e7d88f764b47d4a286202913f0b2801c2e7"},
++    {file = "protobuf-3.20.3-cp36-cp36m-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:899dc660cd599d7352d6f10d83c95df430a38b410c1b66b407a6b29265d66469"},
++    {file = "protobuf-3.20.3-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:e64857f395505ebf3d2569935506ae0dfc4a15cb80dc25261176c784662cdcc4"},
++    {file = "protobuf-3.20.3-cp37-cp37m-manylinux2014_aarch64.whl", hash = "sha256:d9e4432ff660d67d775c66ac42a67cf2453c27cb4d738fc22cb53b5d84c135d4"},
++    {file = "protobuf-3.20.3-cp37-cp37m-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:74480f79a023f90dc6e18febbf7b8bac7508420f2006fabd512013c0c238f454"},
++    {file = "protobuf-3.20.3-cp37-cp37m-win32.whl", hash = "sha256:b6cc7ba72a8850621bfec987cb72623e703b7fe2b9127a161ce61e61558ad905"},
++    {file = "protobuf-3.20.3-cp37-cp37m-win_amd64.whl", hash = "sha256:8c0c984a1b8fef4086329ff8dd19ac77576b384079247c770f29cc8ce3afa06c"},
++    {file = "protobuf-3.20.3-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:de78575669dddf6099a8a0f46a27e82a1783c557ccc38ee620ed8cc96d3be7d7"},
++    {file = "protobuf-3.20.3-cp38-cp38-manylinux2014_aarch64.whl", hash = "sha256:f4c42102bc82a51108e449cbb32b19b180022941c727bac0cfd50170341f16ee"},
++    {file = "protobuf-3.20.3-cp38-cp38-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:44246bab5dd4b7fbd3c0c80b6f16686808fab0e4aca819ade6e8d294a29c7050"},
++    {file = "protobuf-3.20.3-cp38-cp38-win32.whl", hash = "sha256:c02ce36ec760252242a33967d51c289fd0e1c0e6e5cc9397e2279177716add86"},
++    {file = "protobuf-3.20.3-cp38-cp38-win_amd64.whl", hash = "sha256:447d43819997825d4e71bf5769d869b968ce96848b6479397e29fc24c4a5dfe9"},
++    {file = "protobuf-3.20.3-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:398a9e0c3eaceb34ec1aee71894ca3299605fa8e761544934378bbc6c97de23b"},
++    {file = "protobuf-3.20.3-cp39-cp39-manylinux2014_aarch64.whl", hash = "sha256:bf01b5720be110540be4286e791db73f84a2b721072a3711efff6c324cdf074b"},
++    {file = "protobuf-3.20.3-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:daa564862dd0d39c00f8086f88700fdbe8bc717e993a21e90711acfed02f2402"},
++    {file = "protobuf-3.20.3-cp39-cp39-win32.whl", hash = "sha256:819559cafa1a373b7096a482b504ae8a857c89593cf3a25af743ac9ecbd23480"},
++    {file = "protobuf-3.20.3-cp39-cp39-win_amd64.whl", hash = "sha256:03038ac1cfbc41aa21f6afcbcd357281d7521b4157926f30ebecc8d4ea59dcb7"},
++    {file = "protobuf-3.20.3-py2.py3-none-any.whl", hash = "sha256:a7ca6d488aa8ff7f329d4c545b2dbad8ac31464f1d8b1c87ad1346717731e4db"},
++    {file = "protobuf-3.20.3.tar.gz", hash = "sha256:2e3427429c9cffebf259491be0af70189607f365c2f41c7c3764af6f337105f2"},
+ ]
+ 
+ [[package]]
+@@ -2032,6 +2081,18 @@ files = [
+     {file = "smmap-5.0.2.tar.gz", hash = "sha256:26ea65a03958fa0c8a1c7e8c7a58fdc77221b8910f6be2131affade476898ad5"},
+ ]
+ 
++[[package]]
++name = "soupsieve"
++version = "2.7"
++description = "A modern CSS selector implementation for Beautiful Soup."
++optional = false
++python-versions = ">=3.8"
++groups = ["main"]
++files = [
++    {file = "soupsieve-2.7-py3-none-any.whl", hash = "sha256:6e60cc5c1ffaf1cebcc12e8188320b72071e922c2e897f737cadce79ad5d30c4"},
++    {file = "soupsieve-2.7.tar.gz", hash = "sha256:ad282f9b6926286d2ead4750552c8a6142bc4c783fd66b0293547c8fe6ae126a"},
++]
++
+ [[package]]
+ name = "sympy"
+ version = "1.12.1"
+@@ -2620,4 +2681,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
+ [metadata]
+ lock-version = "2.1"
+ python-versions = "^3.8"
+-content-hash = "57daca4b5634f20ee324165d3044722374382d760c35126fe93edb94c87a75f2"
++content-hash = "632d97ced0070d01e3dd1135425d20f063965a68e215f5f27ee5e2fb1e56880f"
+diff --git a/pyproject.toml b/pyproject.toml
+index 5ec0970..d6bcc1f 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -16,3 +16,5 @@ tqdm = "*"
+ scikit-learn = "*"
+ wandb = "^0.19.9"
+ pyramid = "^2.0.2"
++google = "^3.0.0"
++protobuf = "^3.20.3"
+diff --git a/train.py b/train.py
+index 12d3069..24bc3f3 100644
+--- a/train.py
++++ b/train.py
+@@ -193,7 +193,7 @@ class Solver:
+         if local_rank == 0:
+             print(self.criterion)
+ 
+-        self.optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=5e-4)
++        self.optimizer = optim.AdamW(self.net.parameters(), lr=1e-4, weight_decay=5e-4)
+         self.model_path = model_path
+         self.n_classes = n_classes
+ 
+@@ -567,7 +567,7 @@ if __name__ == '__main__':
+         'seed': 42,
+         'n_classes': 1000,
+         'train_val_split': 0.1,
+-        'batch_size': 2**12,
++        'batch_size': 2**10,
+         'num_workers': 1,  
+         'train_dir': 'datasets/imagenet_full_size/061417/train',
+         'val_dir': 'datasets/imagenet_full_size/061417/val',
+diff --git a/wandb/latest-run b/wandb/latest-run
+index cd3b6a3..6209a7f 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250427_014331-esu44v4t
+\ No newline at end of file
++run-20250427_033008-ci94xbdc
+\ No newline at end of file
