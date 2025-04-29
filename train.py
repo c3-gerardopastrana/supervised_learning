@@ -210,6 +210,7 @@ class Solver:
         total = 0
         entropy_sum = 0.0
         entropy_count = 0
+
         
         for batch_idx, (inputs, targets) in enumerate(dataloader):
             inputs = inputs.to(self.device)
@@ -326,7 +327,9 @@ class Solver:
                 
             self.iterate(epoch, 'train')
             with torch.no_grad():
+                self.net.module.lda.finalize_running_stats()
                 val_loss, val_acc = self.iterate(epoch, 'val')
+                self.net.module.lda.reset_running_stats()
                 
             if val_loss < best_loss and self.local_rank == 0:
                 best_loss = val_loss
@@ -349,6 +352,7 @@ class Solver:
             torch.save(checkpoint, self.model_path.replace('.pth', '_final.pth'))
 
     def test_iterate(self, epoch, phase):
+        self.net.module.lda.finalize_running_stats()
         if isinstance(self.net, DDP):
             self.net.module.eval()
         else:
@@ -647,8 +651,12 @@ def train_worker(rank, world_size, config):
 
 
 if __name__ == '__main__':
+    from pathlib import Path
+
+    home = Path('/data')
+    
     config = {
-        'wandb_project': "DELETEME",#"DeepLDA",
+        'wandb_project': "DELETEME",  # "DeepLDA",
         'wandb_entity': "gerardo-pastrana-c3-ai",
         'wandb_group': "gapLoss",
         'seed': 42,
@@ -656,22 +664,22 @@ if __name__ == '__main__':
         'train_val_split': 0.1,
         'batch_size': 4096,
         'num_workers': 1,  
-        'train_dir': 'datasets/imagenet_full_size/061417/train',
-        'val_dir': 'datasets/imagenet_full_size/061417/val',
-        'test_dir': 'datasets/imagenet_full_size/061417/test',
+        'train_dir': str(home / 'datasets/imagenet_full_size/061417/train'),
+        'val_dir': str(home / 'datasets/imagenet_full_size/061417/val'),
+        'test_dir': str(home / 'datasets/imagenet_full_size/061417/test'),
         'model_path': 'models/deeplda_best.pth',
         'loss': 'LDA',
         'lamb': 0.1,
         'n_eig': 4,
         'margin': None,
         'epochs': 100,
-        'k_classes': 100, 
-        'n_samples': 40, 
-
+        'k_classes': 64, 
+        'n_samples': 64, 
     }
+
     
     # Number of available GPUs
-    n_gpus = 4
+    n_gpus = 8
     
     # Launch processes
     mp.spawn(

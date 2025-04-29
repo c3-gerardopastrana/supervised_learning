@@ -162,23 +162,63 @@ class LDA(nn.Module):
         self.n_components = n_classes - 1
         self.lamb = lamb
         self.lda_layer = partial(lda, n_classes=n_classes, lamb=lamb)
+        self.running_stats = None  # Stores cumulative LDA stats
 
     def forward(self, X, y):
-        # perform LDA
-        hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b = self.lda_layer(X, y)  # CxD, D, DxD
+        X = X.view(X.shape[0], -1).detach()
+        y = y.detach()
 
-        # compute LDA statistics
-        self.scalings_ = evecs  # projection matrix, DxD
-        self.coef_ = Xc_mean.matmul(evecs).matmul(evecs.t())  # CxD
-        self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t())) # C
+        # Initialize or update running stats
+        if self.running_stats is None:
+            self.running_stats = RunningLDAStats(self.n_classes, X.shape[1], device='cpu')
+        self.running_stats.update(X, y)
 
-        # return self.transform(X)
+        # Perform batch-wise LDA (temporary, not global yet)
+        hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b = self.lda_layer(X, y)
+
+        # Save batch-wise scalings (not necessarily global yet)
+        self.scalings_ = evecs
+        self.coef_ = Xc_mean.matmul(evecs).matmul(evecs.t())
+        self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t()))
+
         return hasComplexEVal, evals, sigma_w_inv_b
 
+    def finalize_running_stats(self):
+        """Compute global LDA parameters from accumulated running stats."""
+        if self.running_stats is None:
+            raise RuntimeError("No running stats available. Call forward() with data first.")
+
+        Sw, Sb, Xc_mean = self.running_stats.finalize(self.lamb)
+
+        temp = torch.linalg.solve(Sw, Sb)
+        evals_complex, evecs_complex = torch.linalg.eig(temp)
+
+        tol = 1e-6
+        is_complex = torch.abs(evals_complex.imag) > tol
+        real_idx = ~is_complex
+        evals = evals_complex[real_idx].real
+        evecs = evecs_complex[:, real_idx].real
+
+        if evals.numel() > 0:
+            evals, inc_idx = torch.sort(evals)
+            evecs = evecs[:, inc_idx]
+        else:
+            print("Warning: All eigenvalues were complex.")
+            evals = torch.tensor([], dtype=temp.dtype)
+            evecs = torch.zeros((temp.shape[0], 0), dtype=temp.dtype)
+
+        self.scalings_ = evecs
+        self.coef_ = Xc_mean.matmul(evecs).matmul(evecs.t())
+        self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t()))
+
+        return evals  # Optional: return eigenvalues
+
+    def reset_running_stats(self):
+        """Reset accumulated running stats."""
+        self.running_stats = None
+
     def transform(self, X):
-        """ transform data """
-        X_new = X.matmul(self.scalings_)
-        return X_new[:, :self.n_components]
+        return X.matmul(self.scalings_)[:, :self.n_components]
 
     def predict(self, X):
         logit = X.matmul(self.coef_.t()) + self.intercept_
@@ -186,14 +226,61 @@ class LDA(nn.Module):
 
     def predict_proba(self, X):
         logit = X.matmul(self.coef_.t()) + self.intercept_
-        proba = nn.functional.softmax(logit, dim=1)
-        return proba
+        return nn.functional.softmax(logit, dim=1)
 
     def predict_log_proba(self, X):
         logit = X.matmul(self.coef_.t()) + self.intercept_
-        log_proba = nn.functional.log_softmax(logit, dim=1)
-        return log_proba
+        return nn.functional.log_softmax(logit, dim=1)
 
+
+
+class RunningLDAStats:
+    def __init__(self, n_classes, n_features, device='cpu'):
+        self.n_classes = n_classes
+        self.n_features = n_features
+        self.device = 'cpu'  # FORCE CPU
+
+        self.class_sums = torch.zeros((n_classes, n_features), device=self.device)
+        self.class_counts = torch.zeros(n_classes, device=self.device)
+        self.within_class_scatter = torch.zeros((n_features, n_features), device=self.device)
+
+    @torch.no_grad()
+    def update(self, X, y):
+        X = X.view(X.shape[0], -1).cpu()
+        y = y.cpu()
+
+        for cls in range(self.n_classes):
+            mask = (y == cls)
+            if mask.sum() == 0:
+                continue
+            Xc = X[mask]
+            Nc = Xc.shape[0]
+            mean_c = Xc.mean(dim=0)
+
+            self.class_sums[cls] += Xc.sum(dim=0)
+            self.class_counts[cls] += Nc
+
+            Xc_centered = Xc - mean_c
+            scatter_c = Xc_centered.t().matmul(Xc_centered)
+            self.within_class_scatter += scatter_c
+
+
+    def finalize(self, lamb=1e-4):
+        means = self.class_sums / self.class_counts.unsqueeze(1)
+
+        total_samples = self.class_counts.sum()
+        overall_mean = self.class_sums.sum(dim=0) / total_samples
+
+        Sb = torch.zeros((self.n_features, self.n_features), device=self.device)
+        for cls in range(self.n_classes):
+            Nc = self.class_counts[cls]
+            if Nc > 0:
+                mean_diff = (means[cls] - overall_mean).unsqueeze(1)
+                Sb += Nc * mean_diff.matmul(mean_diff.t())
+
+        Sw = self.within_class_scatter + lamb * torch.eye(self.n_features, device=self.device)
+
+        return Sw, Sb, means
 
 
 def spherical_lda(X, y, n_classes, lamb):
