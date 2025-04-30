@@ -1,0 +1,57 @@
+Submodule apex contains modified content
+diff --git a/apex/setup.py b/apex/setup.py
+index 4aa6616..3e369a7 100644
+--- a/apex/setup.py
++++ b/apex/setup.py
+@@ -37,15 +37,15 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
+     print("\nCompiling cuda extensions with")
+     print(raw_output + "from " + cuda_dir + "/bin\n")
+ 
+-    if (bare_metal_version != torch_binary_version):
+-        raise RuntimeError(
+-            "Cuda extensions are being compiled with a version of Cuda that does "
+-            "not match the version used to compile Pytorch binaries.  "
+-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
+-            + "In some cases, a minor-version mismatch will not cause later errors:  "
+-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
+-            "You can try commenting out this check (at your own risk)."
+-        )
++    # if (bare_metal_version != torch_binary_version):
++    #     raise RuntimeError(
++    #         "Cuda extensions are being compiled with a version of Cuda that does "
++    #         "not match the version used to compile Pytorch binaries.  "
++    #         "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
++    #         + "In some cases, a minor-version mismatch will not cause later errors:  "
++    #         "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
++    #         "You can try commenting out this check (at your own risk)."
++    #     )
+ 
+ 
+ def raise_if_cuda_home_none(global_option: str) -> None:
+diff --git a/train.py b/train.py
+index eb7ea7d..e21e849 100644
+--- a/train.py
++++ b/train.py
+@@ -665,8 +665,8 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 100,
+-        'k_classes': 100, 
+-        'n_samples': 40, 
++        'k_classes': 40, 
++        'n_samples': 100, 
+ 
+     }
+     
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 2ab01da..1b7ae31 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250428_213549-4si4f9qg
+\ No newline at end of file
++run-20250428_225720-12ybh16o
+\ No newline at end of file
+diff --git a/wandb/run-20250428_205923-w58ooppt/run-w58ooppt.wandb b/wandb/run-20250428_205923-w58ooppt/run-w58ooppt.wandb
+index 840cb03..d64bfad 100644
+Binary files a/wandb/run-20250428_205923-w58ooppt/run-w58ooppt.wandb and b/wandb/run-20250428_205923-w58ooppt/run-w58ooppt.wandb differ

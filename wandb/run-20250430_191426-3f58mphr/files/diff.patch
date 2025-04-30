@@ -1,0 +1,180 @@
+Submodule apex contains modified content
+diff --git a/apex/setup.py b/apex/setup.py
+index 4aa6616..3e369a7 100644
+--- a/apex/setup.py
++++ b/apex/setup.py
+@@ -37,15 +37,15 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
+     print("\nCompiling cuda extensions with")
+     print(raw_output + "from " + cuda_dir + "/bin\n")
+ 
+-    if (bare_metal_version != torch_binary_version):
+-        raise RuntimeError(
+-            "Cuda extensions are being compiled with a version of Cuda that does "
+-            "not match the version used to compile Pytorch binaries.  "
+-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
+-            + "In some cases, a minor-version mismatch will not cause later errors:  "
+-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
+-            "You can try commenting out this check (at your own risk)."
+-        )
++    # if (bare_metal_version != torch_binary_version):
++    #     raise RuntimeError(
++    #         "Cuda extensions are being compiled with a version of Cuda that does "
++    #         "not match the version used to compile Pytorch binaries.  "
++    #         "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
++    #         + "In some cases, a minor-version mismatch will not cause later errors:  "
++    #         "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
++    #         "You can try commenting out this check (at your own risk)."
++    #     )
+ 
+ 
+ def raise_if_cuda_home_none(global_option: str) -> None:
+diff --git a/lda.py b/lda.py
+index d99fab3..2b1bb24 100644
+--- a/lda.py
++++ b/lda.py
+@@ -162,14 +162,8 @@ class LDA(nn.Module):
+         self.n_components = n_classes - 1
+         self.lamb = lamb
+         self.lda_layer = partial(lda, n_classes=n_classes, lamb=lamb)
+-        self.running_stats = None  # Stores cumulative LDA stats
+ 
+     def forward(self, X, y):
+-        # Initialize or update running stats
+-        if self.running_stats is None:
+-            self.running_stats = RunningLDAStats(self.n_classes, X.shape[1], device='cpu')
+-        self.running_stats.update(X, y)
+-
+         # Perform batch-wise LDA (temporary, not global yet)
+         hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b = self.lda_layer(X, y)
+ 
+@@ -180,41 +174,6 @@ class LDA(nn.Module):
+ 
+         return hasComplexEVal, evals, sigma_w_inv_b
+ 
+-    def finalize_running_stats(self):
+-        """Compute global LDA parameters from accumulated running stats."""
+-        if self.running_stats is None:
+-            raise RuntimeError("No running stats available. Call forward() with data first.")
+-
+-        Sw, Sb, Xc_mean = self.running_stats.finalize(self.lamb)
+-
+-        Sw, Sb, Xc_mean = Sw.to("cuda"), Sb.to("cuda"), Xc_mean.to("cuda")
+-        temp = torch.linalg.solve(Sw, Sb)
+-        evals_complex, evecs_complex = torch.linalg.eig(temp)
+-
+-        tol = 1e-6
+-        is_complex = torch.abs(evals_complex.imag) > tol
+-        real_idx = ~is_complex
+-        evals = evals_complex[real_idx].real
+-        evecs = evecs_complex[:, real_idx].real
+-
+-        if evals.numel() > 0:
+-            evals, inc_idx = torch.sort(evals)
+-            evecs = evecs[:, inc_idx]
+-        else:
+-            print("Warning: All eigenvalues were complex.")
+-            evals = torch.tensor([], dtype=temp.dtype)
+-            evecs = torch.zeros((temp.shape[0], 0), dtype=temp.dtype)
+-
+-        self.scalings_ = evecs
+-        self.coef_ = Xc_mean.matmul(evecs).matmul(evecs.t())
+-        self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t()))
+-
+-        return evals  # Optional: return eigenvalues
+-
+-    def reset_running_stats(self):
+-        """Reset accumulated running stats."""
+-        self.running_stats = None
+-
+     def transform(self, X):
+         return X.matmul(self.scalings_)[:, :self.n_components]
+ 
+diff --git a/train.py b/train.py
+index d179128..3846a81 100644
+--- a/train.py
++++ b/train.py
+@@ -30,6 +30,7 @@ import wandb
+ from lda import LDA, lda_loss, sina_loss, SphericalLDA
+ from models import ResNet, BasicBlock
+ from utils import compute_wandb_metrics
++from eval import run_lda_on_embeddings
+ 
+ def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
+     return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
+@@ -228,13 +229,17 @@ class Solver:
+             
+             # Validation phase
+             with torch.no_grad():
+-                if hasattr(self.net.module, 'lda') and hasattr(self.net.module.lda, 'finalize_running_stats'):
+-                    self.net.module.lda.finalize_running_stats()
+                 val_loss, val_acc = self.iterate(epoch, 'val')
+-                if hasattr(self.net.module, 'lda') and hasattr(self.net.module.lda, 'reset_running_stats'):
+-                    self.net.module.lda.reset_running_stats()
+-                
+                 
++                # Whole forward and validation accuracy
++                if self.local_rank == 0:
++                    lda_accuracy = run_lda_on_embeddings(
++                        self.dataloaders['complete_train'], 
++                        self.dataloaders['val'], 
++                        self.net.module
++                    )
++                    wand.log({'lda_accuracy':lda_accuracy})
++               
+             # Save best model
+             if val_loss < best_loss and self.local_rank == 0:
+                 best_loss = val_loss
+@@ -364,7 +369,7 @@ def train_worker(rank, world_size, config):
+             #     yield batch
+     
+         def __len__(self):
+-            return self.batches_per_epoch // self.world_size
++            return self.batches_per_epoch // self.world_size // 10
+             
+     # Configure CUDA
+     #os.environ['CUDA_VISIBLE_DEVICES'] = config.get('cuda_visible_devices', '')  # Optional GPU ID restrictions
+@@ -442,6 +447,7 @@ def train_worker(rank, world_size, config):
+ 
+     val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
+     test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
++    
+ 
+     # Create dataloaders
+     trainloader = torch.utils.data.DataLoader(
+@@ -468,8 +474,15 @@ def train_worker(rank, world_size, config):
+         num_workers=config['num_workers'],
+         pin_memory=True,
+     )
++        
++    complete_train_loader = torch.utils.data.DataLoader(
++        trainset,
++        batch_size=4096,
++        num_workers=1,
++        pin_memory=True
++    )
+ 
+-    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader}
++    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader, 'complete_train':complete_train_loader}
+     
+     if config['loss'] == 'LDA':
+         lda_args = {'lamb': config['lamb'], 'n_eig': config['n_eig'], 'margin': config['margin']}
+@@ -520,8 +533,8 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 20,
+-        'k_classes':128 ,
+-        'n_samples': 64,
++        'k_classes':64 ,
++        'n_samples': 128,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+         'use_amp': True,                   # Use automatic mixed precision
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 409e3b2..34f448a 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250430_152714-naxvk16q
+\ No newline at end of file
++run-20250430_191426-3f58mphr
+\ No newline at end of file

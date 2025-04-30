@@ -49,3 +49,4 @@ def compute_wandb_metrics(outputs, sigma_w_inv_b):
     }
 
     return metrics
+

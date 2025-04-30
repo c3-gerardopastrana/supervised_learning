@@ -1,0 +1,54 @@
+Submodule apex contains modified content
+diff --git a/apex/setup.py b/apex/setup.py
+index 4aa6616..3e369a7 100644
+--- a/apex/setup.py
++++ b/apex/setup.py
+@@ -37,15 +37,15 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
+     print("\nCompiling cuda extensions with")
+     print(raw_output + "from " + cuda_dir + "/bin\n")
+ 
+-    if (bare_metal_version != torch_binary_version):
+-        raise RuntimeError(
+-            "Cuda extensions are being compiled with a version of Cuda that does "
+-            "not match the version used to compile Pytorch binaries.  "
+-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
+-            + "In some cases, a minor-version mismatch will not cause later errors:  "
+-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
+-            "You can try commenting out this check (at your own risk)."
+-        )
++    # if (bare_metal_version != torch_binary_version):
++    #     raise RuntimeError(
++    #         "Cuda extensions are being compiled with a version of Cuda that does "
++    #         "not match the version used to compile Pytorch binaries.  "
++    #         "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
++    #         + "In some cases, a minor-version mismatch will not cause later errors:  "
++    #         "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
++    #         "You can try commenting out this check (at your own risk)."
++    #     )
+ 
+ 
+ def raise_if_cuda_home_none(global_option: str) -> None:
+diff --git a/train.py b/train.py
+index d179128..8d0454d 100644
+--- a/train.py
++++ b/train.py
+@@ -520,8 +520,8 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 20,
+-        'k_classes':128 ,
+-        'n_samples': 64,
++        'k_classes':64 ,
++        'n_samples': 128,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+         'use_amp': True,                   # Use automatic mixed precision
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 409e3b2..88023e0 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250430_152714-naxvk16q
+\ No newline at end of file
++run-20250430_153540-v36647i9
+\ No newline at end of file

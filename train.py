@@ -30,6 +30,7 @@ import wandb
 from lda import LDA, lda_loss, sina_loss, SphericalLDA
 from models import ResNet, BasicBlock
 from utils import compute_wandb_metrics
+from eval import run_lda_on_embeddings
 
 def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
     return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
@@ -56,7 +57,7 @@ class Solver:
         
         self.use_lda = True if lda_args else False
         if self.use_lda:
-            self.criterion = sina_loss  # Assuming this is defined elsewhere
+            self.criterion = sina_loss 
         else:
             self.criterion = nn.CrossEntropyLoss()
         
@@ -67,194 +68,176 @@ class Solver:
             print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
 
         self.optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=5e-4)
-        self.scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+        self.scaler = torch.amp.GradScaler(enabled=use_amp)
         self.model_path = model_path
         self.n_classes = n_classes
 
+    def get_net(self):
+        return self.net.module if isinstance(self.net, DDP) else self.net
+
+    def handle_lda(self, inputs, targets, epoch, batch_idx):
+        net = self.get_net()
+        hasComplexEVal, feas, outputs, sigma_w_inv_b = net(inputs, targets, epoch)
+    
+        if hasComplexEVal:
+            if self.local_rank == 0:
+                print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
+            return None, None, None
+    
+        metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
+        loss = self.criterion(sigma_w_inv_b)
+        outputs = net.lda.predict_proba(feas)
+    
+        if self.local_rank == 0:
+            wandb.log(metrics, commit=False)
+            wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
+    
+        return loss, outputs, feas, sigma_w_inv_b
+
     def iterate(self, epoch, phase):
-        if isinstance(self.net, DDP):
-            self.net.module.train(phase == 'train')
-        else:
-            self.net.train(phase == 'train')
-            
+        get_net = self.get_net()
+        get_net.train(phase == 'train')
+    
         dataloader = self.dataloaders[phase]
         total_loss = 0
         correct = 0
         total = 0
         entropy_sum = 0.0
         entropy_count = 0
-
-        # Clear CUDA cache before each epoch
+    
         torch.cuda.empty_cache()
         gc.collect()
-        
+    
         for batch_idx, (inputs, targets) in enumerate(dataloader):
-            # Move data to device
             inputs = inputs.to(self.device, non_blocking=True)
             targets = targets.to(self.device, non_blocking=True)
-            
-            # For training with gradient accumulation
+    
             if phase == 'train':
-               
                 self.optimizer.zero_grad(set_to_none=True)
-                
-                # Apply mixed precision for training
                 with torch.cuda.amp.autocast(enabled=self.use_amp):
                     if self.use_lda:
-                        if isinstance(self.net, DDP):
-                            hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net.module(inputs, targets, epoch)
-                        else:
-                            hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net(inputs, targets, epoch)
-                        
-                        if not hasComplexEVal:
-                            # Stats calculation (same as original)
-                            metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
-                            entropy_sum += metrics["entropy"]
-                            entropy_count += 1
-                            loss = self.criterion(sigma_w_inv_b)
-                            
-                            if isinstance(self.net, DDP):
-                                outputs = self.net.module.lda.predict_proba(feas)
-                            else:
-                                outputs = self.net.lda.predict_proba(feas)
-                            
-                            # Only log on rank 0 for efficiency
-                            if phase == 'train' and self.local_rank == 0:
-                                wandb.log(metrics, commit=False)
-                                wandb.log({
-                                    'loss': loss.item(),
-                                    'epoch': epoch,
-                                }, commit=False)
-                        else:
-                            if self.local_rank == 0:
-                                print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
+                        result = self.handle_lda(inputs, targets, epoch, batch_idx)
+                        if result is None:
                             continue
+                        loss, outputs, feas, sigma_w_inv_b = result
                     else:
-                        outputs = self.net(inputs, targets, epoch)
+                        outputs = get_net(inputs, targets, epoch)
                         loss = self.criterion(outputs, targets)
-                
-                # Scale loss for gradient accumulation
-                #loss = loss / self.gradient_accumulation_steps
-                
-                if phase == 'train':
-                    # Use gradient scaler for mixed precision
-                    self.scaler.scale(loss).backward()
-                    
-                    # Step optimizer at effective batch boundaries
-                    #if (effective_batch_idx == self.gradient_accumulation_steps - 1) or (batch_idx == len(dataloader) - 1):
-                    # Unscale before clipping
-                    self.scaler.unscale_(self.optimizer)
-                    grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=5.0)
-                    
-                    # Update with scaler
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
-                    
-                    if self.local_rank == 0:
-                        wandb.log({"grad_norm": grad_norm.item()})
+    
+                self.scaler.scale(loss).backward()
+                self.scaler.unscale_(self.optimizer)
+                grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=5.0)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+    
+                if self.local_rank == 0:
+                    wandb.log({"grad_norm": grad_norm.item()})
             else:
-                # Validation phase - no gradients needed
                 with torch.no_grad():
                     if self.use_lda:
-                        if isinstance(self.net, DDP):
-                            hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net.module(inputs, targets, epoch)
-                        else:
-                            hasComplexEVal, feas, outputs, sigma_w_inv_b = self.net(inputs, targets, epoch)
-                        
-                        if not hasComplexEVal:
-                            loss = self.criterion(sigma_w_inv_b)
-                            
-                            if isinstance(self.net, DDP):
-                                outputs = self.net.module.lda.predict_proba(feas)
-                            else:
-                                outputs = self.net.lda.predict_proba(feas)
-                        else:
+                        result = self.handle_lda(inputs, targets, epoch, batch_idx)
+                        if result is None:
                             continue
+                        loss, outputs, _, _ = result
                     else:
-                        outputs = self.net(inputs, targets, epoch)
+                        outputs = get_net(inputs, targets, epoch)
                         loss = self.criterion(outputs, targets)
-            
-            # Accumulate metrics
-            total_loss += loss.item()  if phase == 'train' else loss.item()
-            
-            outputs = torch.argmax(outputs.detach(), dim=1)
+    
+            total_loss += loss.item()
+            pred = torch.argmax(outputs.detach(), dim=1)
             total += targets.size(0)
-            correct += outputs.eq(targets).sum().item()
-            
-            # Free memory after each batch
+            correct += pred.eq(targets).sum().item()
+    
             del inputs, targets, outputs
-            if phase == 'train' and self.use_lda and not hasComplexEVal:
+            if self.use_lda and phase == 'train' and result is not None:
                 del feas, sigma_w_inv_b
             torch.cuda.empty_cache()
-        
-        # Sync metrics across GPUs
-        if self.world_size > 1:
-            metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
-            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
-            total_loss, correct, total = metrics.tolist()
+    
             
-        total_loss /= (batch_idx + 1) * self.world_size
-        if total > 0:
-            total_acc = correct / total
-        else:
-            total_acc = 0 
-        
-        # Log metrics
-        if self.local_rank == 0:
-            if entropy_count > 0:
-                average_entropy = entropy_sum / entropy_count
-                print(f'Average Entropy: {average_entropy:.4f}')
+            # Sync metrics across GPUs
+            if self.world_size > 1:
+                metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
+                dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+                total_loss, correct, total = metrics.tolist()
+                
+            total_loss /= (batch_idx + 1) * self.world_size
+            if total > 0:
+                total_acc = correct / total
+            else:
+                total_acc = 0 
             
-            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
-            wandb.log({
-                f"epoch_{phase}": epoch,
-                f"loss_{phase}": total_loss,
-                f"acc_{phase}": 100.*total_acc
-            }) 
-        return total_loss, total_acc
+            # Log metrics
+            if self.local_rank == 0:
+                if entropy_count > 0:
+                    average_entropy = entropy_sum / entropy_count
+                    print(f'Average Entropy: {average_entropy:.4f}')
+                
+                print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
+                wandb.log({
+                    f"epoch_{phase}": epoch,
+                    f"loss_{phase}": total_loss,
+                    f"acc_{phase}": 100.*total_acc
+                }) 
+            return total_loss, total_acc
+            
 
+    def save_checkpoint(self, epoch, val_loss, suffix=''):
+        checkpoint = {
+            'epoch': epoch,
+            'val_loss': val_loss,
+            'state_dict': self.get_net().state_dict()
+        }
+        path = self.model_path if not suffix else self.model_path.replace('.pth', f'_{suffix}.pth')
+        torch.save(checkpoint, path)
 
     def train(self, epochs):
         best_loss = float('inf')
+    
         for epoch in range(epochs):
             # Set epoch for distributed samplers
             if self.world_size > 1:
                 for phase in self.dataloaders:
-                    if hasattr(self.dataloaders[phase].sampler, 'set_epoch'):
-                        self.dataloaders[phase].sampler.set_epoch(epoch)
-            
-            # Training phase
+                    sampler = getattr(self.dataloaders[phase], 'sampler', None)
+                    if hasattr(sampler, 'set_epoch'):
+                        sampler.set_epoch(epoch)
+    
+            # Training phase (we ignore returned values here)
             self.iterate(epoch, 'train')
-            
+    
             # Validation phase
             with torch.no_grad():
-                if hasattr(self.net.module, 'lda') and hasattr(self.net.module.lda, 'finalize_running_stats'):
-                    self.net.module.lda.finalize_running_stats()
                 val_loss, val_acc = self.iterate(epoch, 'val')
-                if hasattr(self.net.module, 'lda') and hasattr(self.net.module.lda, 'reset_running_stats'):
-                    self.net.module.lda.reset_running_stats()
-                
-                
-            # Save best model
-            if val_loss < best_loss and self.local_rank == 0:
-                best_loss = val_loss
-                if isinstance(self.net, DDP):
-                    checkpoint = {'epoch': epoch, 'val_loss': val_loss, 'state_dict': self.net.module.state_dict()}
-                else:
-                    checkpoint = {'epoch': epoch, 'val_loss': val_loss, 'state_dict': self.net.state_dict()}
-                print('best val loss found')
-                torch.save(checkpoint, self.model_path)
             
+            # All processes run this to contribute their part of the embeddings
+            import time
+            start_time = time.time()
+            lda_accuracy = run_lda_on_embeddings(
+                self.dataloaders['complete_train'],
+                self.dataloaders['val'],
+                self.get_net(),
+                use_amp=self.use_amp
+            )
+            
+            # Only rank 0 gets accuracy; others get None
+            if self.local_rank == 0 and lda_accuracy is not None:
+                wandb.log({'lda_accuracy': lda_accuracy})
+                elapsed_time = (time.time() - start_time) / 60  # convert to minutes
+                print(f"Total time: {elapsed_time:.2f} minutes")
+
+    
+            # Save best model
             if self.local_rank == 0:
+                if val_loss < best_loss:
+                    best_loss = val_loss
+                    print('Best val loss found')
+                    self.save_checkpoint(epoch, val_loss)
+    
                 print()
-        
-        # Final save on main process
+    
+        # Final save
         if self.local_rank == 0:
-            if isinstance(self.net, DDP):
-                checkpoint = {'epoch': epochs-1, 'val_loss': val_loss, 'state_dict': self.net.module.state_dict()}
-            else:
-                checkpoint = {'epoch': epochs-1, 'val_loss': val_loss, 'state_dict': self.net.state_dict()}
-            torch.save(checkpoint, self.model_path.replace('.pth', '_final.pth'))
+            self.save_checkpoint(epochs - 1, val_loss, suffix='final')
+
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -268,19 +251,22 @@ def cleanup():
     dist.destroy_process_group()
     
 def train_worker(rank, world_size, config):
+    import warnings
+    warnings.simplefilter(action='ignore', category=FutureWarning)
+    
     class ClassBalancedBatchSampler(Sampler):
-        def __init__(self, dataset, k_classes, n_samples,
-                     world_size=1, rank=0, seed=42):
+        def __init__(self, dataset, k_classes: int, n_samples: int,
+                     world_size: int = 1, rank: int = 0, seed: int = 42):
             """
             Class-balanced batch sampler for distributed training.
-            
+    
             Args:
-                dataset: Dataset to sample from
-                k_classes: Number of classes per batch
-                n_samples: Number of samples per class
-                world_size: Number of processes (GPUs)
-                rank: Local rank of this process
-                seed: Random seed
+                dataset: Dataset to sample from.
+                k_classes: Number of different classes in each batch.
+                n_samples: Number of samples per class.
+                world_size: Total number of distributed workers.
+                rank: Rank of the current worker.
+                seed: Random seed for reproducibility.
             """
             super().__init__(dataset)
             self.dataset = dataset
@@ -289,85 +275,61 @@ def train_worker(rank, world_size, config):
             self.world_size = world_size
             self.rank = rank
             self.seed = seed
-            self.epoch = 0  # must be set each epoch manually!
+            self.epoch = 0  # Set externally before each epoch
     
-            # Build mapping from class to list of indices
+            # Get target labels and build class-to-indices mapping
             if isinstance(dataset, torch.utils.data.Subset):
-                targets = [dataset.dataset.targets[i] for i in dataset.indices]
+                indices = dataset.indices
+                targets = [dataset.dataset.targets[i] for i in indices]
             else:
+                indices = range(len(dataset))
                 targets = dataset.targets
-            
-            self.class_to_indices = {}
-            for idx, target in enumerate(targets):
-                if target not in self.class_to_indices:
-                    self.class_to_indices[target] = []
-                self.class_to_indices[target].append(idx)
     
-            # Only keep classes that have enough samples
+            self.class_to_indices = defaultdict(list)
+            for idx, label in zip(indices, targets):
+                self.class_to_indices[label].append(idx)
+    
+            # Filter out classes with insufficient samples
             self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
                                       if len(idxs) >= n_samples]
-            
-            assert len(self.available_classes) >= k_classes, \
-                f"Only {len(self.available_classes)} classes have {n_samples}+ samples, but need {k_classes}"
+            if len(self.available_classes) < k_classes:
+                raise ValueError(f"Need at least {k_classes} classes with ≥{n_samples} samples each, "
+                                 f"but only {len(self.available_classes)} are available.")
     
-            # Compute approximately how many batches can fit
+            # Estimate batches per epoch
             total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
-            batch_size = self.k_classes * self.n_samples
+            batch_size = k_classes * n_samples
             self.batches_per_epoch = total_samples // batch_size
     
-        def set_epoch(self, epoch):
+        def set_epoch(self, epoch: int):
             self.epoch = epoch
     
         def __iter__(self):
-            g = torch.Generator()
-            g.manual_seed(self.seed + self.epoch + self.rank)
-
+            rng = random.Random(self.seed + self.epoch + self.rank)
             num_batches = 0
+            batch_size = self.k_classes * self.n_samples
+    
             while num_batches < self.batches_per_epoch:
-                selected_classes = torch.tensor(self.available_classes)
-                selected_classes = selected_classes[torch.randperm(len(selected_classes), generator=g)][:self.k_classes]
-            
-                batch = []
-                for cls in selected_classes.tolist():
-                    indices = self.class_to_indices[cls]
-                    indices_tensor = torch.tensor(indices)
-                    chosen_indices = indices_tensor[torch.randperm(len(indices_tensor), generator=g)][:self.n_samples]
-                    batch.extend(chosen_indices.tolist())
-            
-                # Shard based on rank
+                selected_classes = rng.sample(self.available_classes, self.k_classes)
+    
+                batch = np.empty(batch_size, dtype=int)
+                offset = 0
+                for cls in selected_classes:
+                    sampled_indices = rng.sample(self.class_to_indices[cls], self.n_samples)
+                    batch[offset:offset + self.n_samples] = sampled_indices
+                    offset += self.n_samples
+    
+                # Shard to the correct worker
                 if num_batches % self.world_size == self.rank:
-                    yield batch
-            
+                    yield batch.tolist()
+    
                 num_batches += 1
-
-    
-            # all_batches = []
-    
-            # while len(all_batches) < self.batches_per_epoch:
-            #     # Pick k_classes randomly
-            #     selected_classes = torch.tensor(self.available_classes)
-            #     selected_classes = selected_classes[torch.randperm(len(selected_classes), generator=g)][:self.k_classes]
-    
-            #     batch = []
-            #     for cls in selected_classes.tolist():
-            #         indices = self.class_to_indices[cls]
-            #         indices_tensor = torch.tensor(indices)
-            #         chosen_indices = indices_tensor[torch.randperm(len(indices_tensor), generator=g)][:self.n_samples]
-            #         batch.extend(chosen_indices.tolist())
-    
-            #     all_batches.append(batch)
-    
-            # # Shard batches across GPUs
-            # local_batches = all_batches[self.rank::self.world_size]
-    
-            # for batch in local_batches:
-            #     yield batch
     
         def __len__(self):
             return self.batches_per_epoch // self.world_size
+
             
     # Configure CUDA
-    #os.environ['CUDA_VISIBLE_DEVICES'] = config.get('cuda_visible_devices', '')  # Optional GPU ID restrictions
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'  # Help with fragmentation
     
     # Setup process group
@@ -423,8 +385,8 @@ def train_worker(rank, world_size, config):
         transforms.ToTensor(),
         normalize,
     ])
-
-    # Create datasets
+    
+    # Create subset
     trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
     valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
     testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
@@ -442,6 +404,8 @@ def train_worker(rank, world_size, config):
 
     val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
     test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
+    complete_train_sampler = DistributedSampler(trainset, num_replicas=world_size, rank=rank, shuffle=False)
+    
 
     # Create dataloaders
     trainloader = torch.utils.data.DataLoader(
@@ -468,8 +432,16 @@ def train_worker(rank, world_size, config):
         num_workers=config['num_workers'],
         pin_memory=True,
     )
+        
+    complete_train_loader = torch.utils.data.DataLoader(
+        trainset, 
+        batch_size=config['batch_size'],
+        sampler=complete_train_sampler,
+        num_workers=config['num_workers'],
+        pin_memory=True,
+    )
 
-    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader}
+    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader, 'complete_train':complete_train_loader}
     
     if config['loss'] == 'LDA':
         lda_args = {'lamb': config['lamb'], 'n_eig': config['n_eig'], 'margin': config['margin']}
@@ -509,7 +481,7 @@ if __name__ == '__main__':
         'seed': 42,
         'n_classes': 1000,
         'train_val_split': 0.1,
-        'batch_size': 4096,  # Global batch size
+        'batch_size': 8192,  # Global batch size
         'num_workers': 1,  # Adjust based on CPU cores
         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
         'val_dir': '/data/datasets/imagenet_full_size/061417/val',
@@ -520,8 +492,8 @@ if __name__ == '__main__':
         'n_eig': 4,
         'margin': None,
         'epochs': 20,
-        'k_classes':128 ,
-        'n_samples': 64,
+        'k_classes': 64,
+        'n_samples': 128,
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
         'use_amp': True,                   # Use automatic mixed precision

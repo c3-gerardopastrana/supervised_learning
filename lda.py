@@ -135,7 +135,7 @@ def sina_loss(sigma_w_inv_b):
     # # loss = torch.norm(diff, p='fro')**2
 
     # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
-    lambda_target = torch.tensor(2**14, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
     penalty = (trace - lambda_target).pow(2) / lambda_target  # scale-free, minimal tuning
 
     loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
@@ -162,14 +162,8 @@ class LDA(nn.Module):
         self.n_components = n_classes - 1
         self.lamb = lamb
         self.lda_layer = partial(lda, n_classes=n_classes, lamb=lamb)
-        self.running_stats = None  # Stores cumulative LDA stats
 
     def forward(self, X, y):
-        # Initialize or update running stats
-        if self.running_stats is None:
-            self.running_stats = RunningLDAStats(self.n_classes, X.shape[1], device='cpu')
-        self.running_stats.update(X, y)
-
         # Perform batch-wise LDA (temporary, not global yet)
         hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b = self.lda_layer(X, y)
 
@@ -179,41 +173,6 @@ class LDA(nn.Module):
         self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t()))
 
         return hasComplexEVal, evals, sigma_w_inv_b
-
-    def finalize_running_stats(self):
-        """Compute global LDA parameters from accumulated running stats."""
-        if self.running_stats is None:
-            raise RuntimeError("No running stats available. Call forward() with data first.")
-
-        Sw, Sb, Xc_mean = self.running_stats.finalize(self.lamb)
-
-        Sw, Sb, Xc_mean = Sw.to("cuda"), Sb.to("cuda"), Xc_mean.to("cuda")
-        temp = torch.linalg.solve(Sw, Sb)
-        evals_complex, evecs_complex = torch.linalg.eig(temp)
-
-        tol = 1e-6
-        is_complex = torch.abs(evals_complex.imag) > tol
-        real_idx = ~is_complex
-        evals = evals_complex[real_idx].real
-        evecs = evecs_complex[:, real_idx].real
-
-        if evals.numel() > 0:
-            evals, inc_idx = torch.sort(evals)
-            evecs = evecs[:, inc_idx]
-        else:
-            print("Warning: All eigenvalues were complex.")
-            evals = torch.tensor([], dtype=temp.dtype)
-            evecs = torch.zeros((temp.shape[0], 0), dtype=temp.dtype)
-
-        self.scalings_ = evecs
-        self.coef_ = Xc_mean.matmul(evecs).matmul(evecs.t())
-        self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t()))
-
-        return evals  # Optional: return eigenvalues
-
-    def reset_running_stats(self):
-        """Reset accumulated running stats."""
-        self.running_stats = None
 
     def transform(self, X):
         return X.matmul(self.scalings_)[:, :self.n_components]
