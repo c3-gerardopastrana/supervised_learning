@@ -1,0 +1,48 @@
+diff --git a/lda.py b/lda.py
+index 5b8bae9..25471b4 100644
+--- a/lda.py
++++ b/lda.py
+@@ -246,8 +246,8 @@ class RunningLDAStats:
+ 
+     @torch.no_grad()
+     def update(self, X, y):
+-        X = X.view(X.shape[0], -1).cpu()
+-        y = y.cpu()
++        X = X.view(X.shape[0], -1).detach().to('cpu')
++        y = y.detach().to('cpu')
+ 
+         for cls in range(self.n_classes):
+             mask = (y == cls)
+diff --git a/train.py b/train.py
+index 146c137..3ba1517 100644
+--- a/train.py
++++ b/train.py
+@@ -673,13 +673,13 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 100,
+-        'k_classes': 64, 
+-        'n_samples': 64, 
++        'k_classes': 100, 
++        'n_samples': 40, 
+     }
+ 
+     
+     # Number of available GPUs
+-    n_gpus = 8
++    n_gpus = 4
+     
+     # Launch processes
+     mp.spawn(
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 538ff58..c7dee1a 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250429_053315-pm5qboq7
+\ No newline at end of file
++run-20250429_060242-g7j6flju
+\ No newline at end of file
+diff --git a/wandb/run-20250428_213549-4si4f9qg/run-4si4f9qg.wandb b/wandb/run-20250428_213549-4si4f9qg/run-4si4f9qg.wandb
+index 686db59..42fa731 100644
+Binary files a/wandb/run-20250428_213549-4si4f9qg/run-4si4f9qg.wandb and b/wandb/run-20250428_213549-4si4f9qg/run-4si4f9qg.wandb differ

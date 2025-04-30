@@ -165,9 +165,6 @@ class LDA(nn.Module):
         self.running_stats = None  # Stores cumulative LDA stats
 
     def forward(self, X, y):
-        X = X.view(X.shape[0], -1).detach()
-        y = y.detach()
-
         # Initialize or update running stats
         if self.running_stats is None:
             self.running_stats = RunningLDAStats(self.n_classes, X.shape[1], device='cpu')
@@ -190,6 +187,7 @@ class LDA(nn.Module):
 
         Sw, Sb, Xc_mean = self.running_stats.finalize(self.lamb)
 
+        Sw, Sb, Xc_mean = Sw.to("cuda"), Sb.to("cuda"), Xc_mean.to("cuda")
         temp = torch.linalg.solve(Sw, Sb)
         evals_complex, evecs_complex = torch.linalg.eig(temp)
 
@@ -246,8 +244,8 @@ class RunningLDAStats:
 
     @torch.no_grad()
     def update(self, X, y):
-        X = X.view(X.shape[0], -1).cpu()
-        y = y.cpu()
+        X = X.view(X.shape[0], -1).detach().to('cpu')
+        y = y.detach().to('cpu')
 
         for cls in range(self.n_classes):
             mask = (y == cls)

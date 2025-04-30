@@ -1,0 +1,126 @@
+diff --git a/lda.py b/lda.py
+index 5b8bae9..e14d5f8 100644
+--- a/lda.py
++++ b/lda.py
+@@ -165,9 +165,6 @@ class LDA(nn.Module):
+         self.running_stats = None  # Stores cumulative LDA stats
+ 
+     def forward(self, X, y):
+-        X = X.view(X.shape[0], -1).detach()
+-        y = y.detach()
+-
+         # Initialize or update running stats
+         if self.running_stats is None:
+             self.running_stats = RunningLDAStats(self.n_classes, X.shape[1], device='cpu')
+@@ -246,8 +243,8 @@ class RunningLDAStats:
+ 
+     @torch.no_grad()
+     def update(self, X, y):
+-        X = X.view(X.shape[0], -1).cpu()
+-        y = y.cpu()
++        X = X.view(X.shape[0], -1).detach().to('cpu')
++        y = y.detach().to('cpu')
+ 
+         for cls in range(self.n_classes):
+             mask = (y == cls)
+diff --git a/train.py b/train.py
+index 146c137..fd0b886 100644
+--- a/train.py
++++ b/train.py
+@@ -52,7 +52,7 @@ class BasicBlock(nn.Module):
+         return checkpoint(self._forward_impl, x)
+ 
+ class ResNet(nn.Module):
+-    def __init__(self, block, num_blocks, num_classes=1000, lda_args=None, use_checkpoint=False):
++    def __init__(self, block, num_blocks, num_classes=1000, lda_args=None, use_checkpoint=True):
+         super(ResNet, self).__init__()
+         self.lda_args = lda_args
+         self.in_planes = 64
+@@ -516,28 +516,47 @@ def train_worker(rank, world_size, config):
+         def __iter__(self):
+             g = torch.Generator()
+             g.manual_seed(self.seed + self.epoch + self.rank)
+-    
+-            all_batches = []
+-    
+-            while len(all_batches) < self.batches_per_epoch:
+-                # Pick k_classes randomly
++
++            num_batches = 0
++            while num_batches < self.batches_per_epoch:
+                 selected_classes = torch.tensor(self.available_classes)
+                 selected_classes = selected_classes[torch.randperm(len(selected_classes), generator=g)][:self.k_classes]
+-    
++            
+                 batch = []
+                 for cls in selected_classes.tolist():
+                     indices = self.class_to_indices[cls]
+                     indices_tensor = torch.tensor(indices)
+                     chosen_indices = indices_tensor[torch.randperm(len(indices_tensor), generator=g)][:self.n_samples]
+                     batch.extend(chosen_indices.tolist())
++            
++                # Shard based on rank
++                if num_batches % self.world_size == self.rank:
++                    yield batch
++            
++                num_batches += 1
++
++    
++            # all_batches = []
++    
++            # while len(all_batches) < self.batches_per_epoch:
++            #     # Pick k_classes randomly
++            #     selected_classes = torch.tensor(self.available_classes)
++            #     selected_classes = selected_classes[torch.randperm(len(selected_classes), generator=g)][:self.k_classes]
++    
++            #     batch = []
++            #     for cls in selected_classes.tolist():
++            #         indices = self.class_to_indices[cls]
++            #         indices_tensor = torch.tensor(indices)
++            #         chosen_indices = indices_tensor[torch.randperm(len(indices_tensor), generator=g)][:self.n_samples]
++            #         batch.extend(chosen_indices.tolist())
+     
+-                all_batches.append(batch)
++            #     all_batches.append(batch)
+     
+-            # Shard batches across GPUs
+-            local_batches = all_batches[self.rank::self.world_size]
++            # # Shard batches across GPUs
++            # local_batches = all_batches[self.rank::self.world_size]
+     
+-            for batch in local_batches:
+-                yield batch
++            # for batch in local_batches:
++            #     yield batch
+     
+         def __len__(self):
+             return self.batches_per_epoch // self.world_size
+@@ -673,13 +692,13 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 100,
+-        'k_classes': 64, 
+-        'n_samples': 64, 
++        'k_classes': 80, 
++        'n_samples': 80, 
+     }
+ 
+     
+     # Number of available GPUs
+-    n_gpus = 8
++    n_gpus = 4
+     
+     # Launch processes
+     mp.spawn(
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 538ff58..0b8b4bf 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250429_053315-pm5qboq7
+\ No newline at end of file
++run-20250430_002729-8xml2kz7
+\ No newline at end of file
+diff --git a/wandb/run-20250428_213549-4si4f9qg/run-4si4f9qg.wandb b/wandb/run-20250428_213549-4si4f9qg/run-4si4f9qg.wandb
+index 686db59..42fa731 100644
+Binary files a/wandb/run-20250428_213549-4si4f9qg/run-4si4f9qg.wandb and b/wandb/run-20250428_213549-4si4f9qg/run-4si4f9qg.wandb differ
