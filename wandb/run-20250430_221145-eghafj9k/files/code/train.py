@@ -80,7 +80,8 @@ class Solver:
         hasComplexEVal, feas, outputs, sigma_w_inv_b = net(inputs, targets, epoch)
     
         if hasComplexEVal:
-            print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
+            if self.local_rank == 0:
+                print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
             return None, None, None
     
         metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
@@ -153,31 +154,31 @@ class Solver:
             torch.cuda.empty_cache()
     
             
-        # Sync metrics across GPUs
-        if self.world_size > 1:
-            metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
-            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
-            total_loss, correct, total = metrics.tolist()
+            # Sync metrics across GPUs
+            if self.world_size > 1:
+                metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
+                dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+                total_loss, correct, total = metrics.tolist()
+                
+            total_loss /= (batch_idx + 1) * self.world_size
+            if total > 0:
+                total_acc = correct / total
+            else:
+                total_acc = 0 
             
-        total_loss /= (batch_idx + 1) * self.world_size
-        if total > 0:
-            total_acc = correct / total
-        else:
-            total_acc = 0 
-        
-        # Log metrics
-        if self.local_rank == 0:
-            if entropy_count > 0:
-                average_entropy = entropy_sum / entropy_count
-                print(f'Average Entropy: {average_entropy:.4f}')
-            
-            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
-            wandb.log({
-                f"epoch_{phase}": epoch,
-                f"loss_{phase}": total_loss,
-                f"acc_{phase}": 100.*total_acc
-            }) 
-        return total_loss, total_acc
+            # Log metrics
+            if self.local_rank == 0:
+                if entropy_count > 0:
+                    average_entropy = entropy_sum / entropy_count
+                    print(f'Average Entropy: {average_entropy:.4f}')
+                
+                print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
+                wandb.log({
+                    f"epoch_{phase}": epoch,
+                    f"loss_{phase}": total_loss,
+                    f"acc_{phase}": 100.*total_acc
+                }) 
+            return total_loss, total_acc
             
 
     def save_checkpoint(self, epoch, val_loss, suffix=''):
@@ -254,18 +255,18 @@ def train_worker(rank, world_size, config):
     warnings.simplefilter(action='ignore', category=FutureWarning)
     
     class ClassBalancedBatchSampler(Sampler):
-        def __init__(self, dataset, k_classes: int, n_samples: int,
-                     world_size: int = 1, rank: int = 0, seed: int = 42):
+        def __init__(self, dataset, k_classes, n_samples,
+                     world_size=1, rank=0, seed=42):
             """
             Class-balanced batch sampler for distributed training.
-    
+            
             Args:
-                dataset: Dataset to sample from.
-                k_classes: Number of different classes in each batch.
-                n_samples: Number of samples per class.
-                world_size: Total number of distributed workers.
-                rank: Rank of the current worker.
-                seed: Random seed for reproducibility.
+                dataset: Dataset to sample from
+                k_classes: Number of classes per batch
+                n_samples: Number of samples per class
+                world_size: Number of processes (GPUs)
+                rank: Local rank of this process
+                seed: Random seed
             """
             super().__init__(dataset)
             self.dataset = dataset
@@ -274,61 +275,82 @@ def train_worker(rank, world_size, config):
             self.world_size = world_size
             self.rank = rank
             self.seed = seed
-            self.epoch = 0  # Set externally before each epoch
+            self.epoch = 0  # must be set each epoch manually!
     
-            # Get target labels and build class-to-indices mapping
+            # Build mapping from class to list of indices
             if isinstance(dataset, torch.utils.data.Subset):
-                indices = dataset.indices
-                targets = [dataset.dataset.targets[i] for i in indices]
+                targets = [dataset.dataset.targets[i] for i in dataset.indices]
             else:
-                indices = range(len(dataset))
                 targets = dataset.targets
+            
+            self.class_to_indices = {}
+            for idx, target in enumerate(targets):
+                if target not in self.class_to_indices:
+                    self.class_to_indices[target] = []
+                self.class_to_indices[target].append(idx)
     
-            self.class_to_indices = defaultdict(list)
-            for idx, label in zip(indices, targets):
-                self.class_to_indices[label].append(idx)
-    
-            # Filter out classes with insufficient samples
+            # Only keep classes that have enough samples
             self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
                                       if len(idxs) >= n_samples]
-            if len(self.available_classes) < k_classes:
-                raise ValueError(f"Need at least {k_classes} classes with ≥{n_samples} samples each, "
-                                 f"but only {len(self.available_classes)} are available.")
+            
+            assert len(self.available_classes) >= k_classes, \
+                f"Only {len(self.available_classes)} classes have {n_samples}+ samples, but need {k_classes}"
     
-            # Estimate batches per epoch
+            # Compute approximately how many batches can fit
             total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
-            batch_size = k_classes * n_samples
-            print("total samples", total_samples)
-            print("batches per epoch", total_samples // batch_size)
+            batch_size = self.k_classes * self.n_samples
             self.batches_per_epoch = total_samples // batch_size
     
-        def set_epoch(self, epoch: int):
+        def set_epoch(self, epoch):
             self.epoch = epoch
     
         def __iter__(self):
-            rng = random.Random(self.seed + self.epoch + self.rank)
+            g = torch.Generator()
+            g.manual_seed(self.seed + self.epoch + self.rank)
+
             num_batches = 0
-            batch_size = self.k_classes * self.n_samples
-    
             while num_batches < self.batches_per_epoch:
-                selected_classes = rng.sample(self.available_classes, self.k_classes)
-    
-                batch = np.empty(batch_size, dtype=int)
-                offset = 0
-                for cls in selected_classes:
-                    sampled_indices = rng.sample(self.class_to_indices[cls], self.n_samples)
-                    batch[offset:offset + self.n_samples] = sampled_indices
-                    offset += self.n_samples
-    
-                # Shard to the correct worker
+                selected_classes = torch.tensor(self.available_classes)
+                selected_classes = selected_classes[torch.randperm(len(selected_classes), generator=g)][:self.k_classes]
+            
+                batch = []
+                for cls in selected_classes.tolist():
+                    indices = self.class_to_indices[cls]
+                    indices_tensor = torch.tensor(indices)
+                    chosen_indices = indices_tensor[torch.randperm(len(indices_tensor), generator=g)][:self.n_samples]
+                    batch.extend(chosen_indices.tolist())
+            
+                # Shard based on rank
                 if num_batches % self.world_size == self.rank:
-                    yield batch.tolist()
-    
+                    yield batch
+            
                 num_batches += 1
+
+    
+            # all_batches = []
+    
+            # while len(all_batches) < self.batches_per_epoch:
+            #     # Pick k_classes randomly
+            #     selected_classes = torch.tensor(self.available_classes)
+            #     selected_classes = selected_classes[torch.randperm(len(selected_classes), generator=g)][:self.k_classes]
+    
+            #     batch = []
+            #     for cls in selected_classes.tolist():
+            #         indices = self.class_to_indices[cls]
+            #         indices_tensor = torch.tensor(indices)
+            #         chosen_indices = indices_tensor[torch.randperm(len(indices_tensor), generator=g)][:self.n_samples]
+            #         batch.extend(chosen_indices.tolist())
+    
+            #     all_batches.append(batch)
+    
+            # # Shard batches across GPUs
+            # local_batches = all_batches[self.rank::self.world_size]
+    
+            # for batch in local_batches:
+            #     yield batch
     
         def __len__(self):
             return self.batches_per_epoch // self.world_size
-
             
     # Configure CUDA
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'  # Help with fragmentation
@@ -492,7 +514,7 @@ if __name__ == '__main__':
         'lamb': 0.1,
         'n_eig': 4,
         'margin': None,
-        'epochs': 25,
+        'epochs': 20,
         'k_classes': 64,
         'n_samples': 128,
         # Memory optimization parameters

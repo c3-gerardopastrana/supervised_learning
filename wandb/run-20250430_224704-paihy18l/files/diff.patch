@@ -1,0 +1,164 @@
+Submodule apex contains modified content
+diff --git a/apex/setup.py b/apex/setup.py
+index 4aa6616..3e369a7 100644
+--- a/apex/setup.py
++++ b/apex/setup.py
+@@ -37,15 +37,15 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
+     print("\nCompiling cuda extensions with")
+     print(raw_output + "from " + cuda_dir + "/bin\n")
+ 
+-    if (bare_metal_version != torch_binary_version):
+-        raise RuntimeError(
+-            "Cuda extensions are being compiled with a version of Cuda that does "
+-            "not match the version used to compile Pytorch binaries.  "
+-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
+-            + "In some cases, a minor-version mismatch will not cause later errors:  "
+-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
+-            "You can try commenting out this check (at your own risk)."
+-        )
++    # if (bare_metal_version != torch_binary_version):
++    #     raise RuntimeError(
++    #         "Cuda extensions are being compiled with a version of Cuda that does "
++    #         "not match the version used to compile Pytorch binaries.  "
++    #         "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
++    #         + "In some cases, a minor-version mismatch will not cause later errors:  "
++    #         "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
++    #         "You can try commenting out this check (at your own risk)."
++    #     )
+ 
+ 
+ def raise_if_cuda_home_none(global_option: str) -> None:
+diff --git a/eval.py b/eval.py
+index 67d12b4..eb92927 100644
+--- a/eval.py
++++ b/eval.py
+@@ -10,15 +10,19 @@ def gather_tensor(tensor):
+     dist.all_gather(tensors_gather, tensor)
+     return torch.cat(tensors_gather, dim=0)
+ 
++from tqdm import tqdm
++
+ def run_lda_on_embeddings(train_loader, val_loader, model, device=None, use_amp=True):
+     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+     model.to(device)
+     model.eval()
+ 
+-    def extract_embeddings(loader):
++    def extract_embeddings(loader, split_name):
+         embeddings, labels = [], []
++        rank = dist.get_rank() if dist.is_initialized() else 0
++        desc = f"[{split_name}] Rank {rank}"
+         with torch.no_grad():
+-            for x, y in loader:
++            for x, y in tqdm(loader, desc=desc, leave=False):
+                 x = x.to(device, non_blocking=True)
+                 y = y.to(device, non_blocking=True)
+                 with torch.cuda.amp.autocast(enabled=use_amp):
+diff --git a/train.py b/train.py
+index 213528a..b2ea731 100644
+--- a/train.py
++++ b/train.py
+@@ -80,8 +80,7 @@ class Solver:
+         hasComplexEVal, feas, outputs, sigma_w_inv_b = net(inputs, targets, epoch)
+     
+         if hasComplexEVal:
+-            if self.local_rank == 0:
+-                print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
++            print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
+             return None, None, None
+     
+         metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
+@@ -109,6 +108,7 @@ class Solver:
+         gc.collect()
+     
+         for batch_idx, (inputs, targets) in enumerate(dataloader):
++            print(batch_idx)
+             inputs = inputs.to(self.device, non_blocking=True)
+             targets = targets.to(self.device, non_blocking=True)
+     
+@@ -154,31 +154,31 @@ class Solver:
+             torch.cuda.empty_cache()
+     
+             
+-            # Sync metrics across GPUs
+-            if self.world_size > 1:
+-                metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
+-                dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+-                total_loss, correct, total = metrics.tolist()
+-                
+-            total_loss /= (batch_idx + 1) * self.world_size
+-            if total > 0:
+-                total_acc = correct / total
+-            else:
+-                total_acc = 0 
++        # Sync metrics across GPUs
++        if self.world_size > 1:
++            metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
++            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
++            total_loss, correct, total = metrics.tolist()
+             
+-            # Log metrics
+-            if self.local_rank == 0:
+-                if entropy_count > 0:
+-                    average_entropy = entropy_sum / entropy_count
+-                    print(f'Average Entropy: {average_entropy:.4f}')
+-                
+-                print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
+-                wandb.log({
+-                    f"epoch_{phase}": epoch,
+-                    f"loss_{phase}": total_loss,
+-                    f"acc_{phase}": 100.*total_acc
+-                }) 
+-            return total_loss, total_acc
++        total_loss /= (batch_idx + 1) * self.world_size
++        if total > 0:
++            total_acc = correct / total
++        else:
++            total_acc = 0 
++        
++        # Log metrics
++        if self.local_rank == 0:
++            if entropy_count > 0:
++                average_entropy = entropy_sum / entropy_count
++                print(f'Average Entropy: {average_entropy:.4f}')
++            
++            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
++            wandb.log({
++                f"epoch_{phase}": epoch,
++                f"loss_{phase}": total_loss,
++                f"acc_{phase}": 100.*total_acc
++            }) 
++        return total_loss, total_acc
+             
+ 
+     def save_checkpoint(self, epoch, val_loss, suffix=''):
+@@ -299,6 +299,8 @@ def train_worker(rank, world_size, config):
+             # Estimate batches per epoch
+             total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
+             batch_size = k_classes * n_samples
++            print("total samples", total_samples)
++            print("batches per epoch", total_samples // batch_size)
+             self.batches_per_epoch = total_samples // batch_size
+     
+         def set_epoch(self, epoch: int):
+@@ -491,7 +493,7 @@ if __name__ == '__main__':
+         'lamb': 0.1,
+         'n_eig': 4,
+         'margin': None,
+-        'epochs': 20,
++        'epochs': 25,
+         'k_classes': 64,
+         'n_samples': 128,
+         # Memory optimization parameters
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 08e9ddd..9f65360 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250430_215907-4anamnlf
+\ No newline at end of file
++run-20250430_224704-paihy18l
+\ No newline at end of file
+diff --git a/wandb/run-20250430_215907-4anamnlf/run-4anamnlf.wandb b/wandb/run-20250430_215907-4anamnlf/run-4anamnlf.wandb
+index e69de29..e96792e 100644
+Binary files a/wandb/run-20250430_215907-4anamnlf/run-4anamnlf.wandb and b/wandb/run-20250430_215907-4anamnlf/run-4anamnlf.wandb differ

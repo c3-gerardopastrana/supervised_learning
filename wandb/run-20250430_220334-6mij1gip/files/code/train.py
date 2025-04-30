@@ -80,7 +80,8 @@ class Solver:
         hasComplexEVal, feas, outputs, sigma_w_inv_b = net(inputs, targets, epoch)
     
         if hasComplexEVal:
-            print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
+            if self.local_rank == 0:
+                print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
             return None, None, None
     
         metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
@@ -153,31 +154,31 @@ class Solver:
             torch.cuda.empty_cache()
     
             
-        # Sync metrics across GPUs
-        if self.world_size > 1:
-            metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
-            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
-            total_loss, correct, total = metrics.tolist()
+            # Sync metrics across GPUs
+            if self.world_size > 1:
+                metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
+                dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+                total_loss, correct, total = metrics.tolist()
+                
+            total_loss /= (batch_idx + 1) * self.world_size
+            if total > 0:
+                total_acc = correct / total
+            else:
+                total_acc = 0 
             
-        total_loss /= (batch_idx + 1) * self.world_size
-        if total > 0:
-            total_acc = correct / total
-        else:
-            total_acc = 0 
-        
-        # Log metrics
-        if self.local_rank == 0:
-            if entropy_count > 0:
-                average_entropy = entropy_sum / entropy_count
-                print(f'Average Entropy: {average_entropy:.4f}')
-            
-            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
-            wandb.log({
-                f"epoch_{phase}": epoch,
-                f"loss_{phase}": total_loss,
-                f"acc_{phase}": 100.*total_acc
-            }) 
-        return total_loss, total_acc
+            # Log metrics
+            if self.local_rank == 0:
+                if entropy_count > 0:
+                    average_entropy = entropy_sum / entropy_count
+                    print(f'Average Entropy: {average_entropy:.4f}')
+                
+                print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
+                wandb.log({
+                    f"epoch_{phase}": epoch,
+                    f"loss_{phase}": total_loss,
+                    f"acc_{phase}": 100.*total_acc
+                }) 
+            return total_loss, total_acc
             
 
     def save_checkpoint(self, epoch, val_loss, suffix=''):
@@ -299,7 +300,6 @@ def train_worker(rank, world_size, config):
             total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
             batch_size = k_classes * n_samples
             print("total samples", total_samples)
-            print("batches per epoch", total_samples // batch_size)
             self.batches_per_epoch = total_samples // batch_size
     
         def set_epoch(self, epoch: int):
@@ -492,7 +492,7 @@ if __name__ == '__main__':
         'lamb': 0.1,
         'n_eig': 4,
         'margin': None,
-        'epochs': 25,
+        'epochs': 20,
         'k_classes': 64,
         'n_samples': 128,
         # Memory optimization parameters

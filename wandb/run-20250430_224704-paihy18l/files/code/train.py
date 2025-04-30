@@ -108,6 +108,7 @@ class Solver:
         gc.collect()
     
         for batch_idx, (inputs, targets) in enumerate(dataloader):
+            print(batch_idx)
             inputs = inputs.to(self.device, non_blocking=True)
             targets = targets.to(self.device, non_blocking=True)
     

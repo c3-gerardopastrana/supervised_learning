@@ -10,15 +10,19 @@ def gather_tensor(tensor):
     dist.all_gather(tensors_gather, tensor)
     return torch.cat(tensors_gather, dim=0)
 
+from tqdm import tqdm
+
 def run_lda_on_embeddings(train_loader, val_loader, model, device=None, use_amp=True):
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
 
-    def extract_embeddings(loader):
+    def extract_embeddings(loader, split_name):
         embeddings, labels = [], []
+        rank = dist.get_rank() if dist.is_initialized() else 0
+        desc = f"[{split_name}] Rank {rank}"
         with torch.no_grad():
-            for x, y in loader:
+            for x, y in tqdm(loader, desc=desc, leave=False):
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 with torch.cuda.amp.autocast(enabled=use_amp):
