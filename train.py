@@ -30,7 +30,7 @@ import wandb
 from lda import LDA, lda_loss, sina_loss, SphericalLDA
 from models import ResNet, BasicBlock
 from utils import compute_wandb_metrics
-from eval import run_lda_on_embeddings
+from eval import run_linear_probe_on_embeddings
 
 def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
     return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
@@ -210,7 +210,7 @@ class Solver:
             # All processes run this to contribute their part of the embeddings
             import time
             start_time = time.time()
-            lda_accuracy = run_lda_on_embeddings(
+            lda_accuracy = run_linear_probe_on_embeddings(
                 self.dataloaders['complete_train'],
                 self.dataloaders['val'],
                 self.get_net(),

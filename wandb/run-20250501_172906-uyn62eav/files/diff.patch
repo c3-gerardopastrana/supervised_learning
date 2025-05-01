@@ -1,0 +1,302 @@
+Submodule apex contains modified content
+diff --git a/apex/setup.py b/apex/setup.py
+index 4aa6616..3e369a7 100644
+--- a/apex/setup.py
++++ b/apex/setup.py
+@@ -37,15 +37,15 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
+     print("\nCompiling cuda extensions with")
+     print(raw_output + "from " + cuda_dir + "/bin\n")
+ 
+-    if (bare_metal_version != torch_binary_version):
+-        raise RuntimeError(
+-            "Cuda extensions are being compiled with a version of Cuda that does "
+-            "not match the version used to compile Pytorch binaries.  "
+-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
+-            + "In some cases, a minor-version mismatch will not cause later errors:  "
+-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
+-            "You can try commenting out this check (at your own risk)."
+-        )
++    # if (bare_metal_version != torch_binary_version):
++    #     raise RuntimeError(
++    #         "Cuda extensions are being compiled with a version of Cuda that does "
++    #         "not match the version used to compile Pytorch binaries.  "
++    #         "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
++    #         + "In some cases, a minor-version mismatch will not cause later errors:  "
++    #         "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
++    #         "You can try commenting out this check (at your own risk)."
++    #     )
+ 
+ 
+ def raise_if_cuda_home_none(global_option: str) -> None:
+diff --git a/approx_accurayc.ipynb b/approx_accurayc.ipynb
+index df2e7a0..60e648a 100644
+--- a/approx_accurayc.ipynb
++++ b/approx_accurayc.ipynb
+@@ -164,15 +164,19 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": 5,
++   "execution_count": 3,
+    "id": "d5cec810-12c5-424e-8626-73ae2dae21aa",
+    "metadata": {},
+    "outputs": [
+     {
+-     "name": "stdout",
+-     "output_type": "stream",
+-     "text": [
+-      "Test Accuracy: 8.20%\n"
++     "ename": "NameError",
++     "evalue": "name 'X_train' is not defined",
++     "output_type": "error",
++     "traceback": [
++      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
++      "\u001b[0;31mNameError\u001b[0m                                 Traceback (most recent call last)",
++      "Cell \u001b[0;32mIn[3], line 9\u001b[0m\n\u001b[1;32m      6\u001b[0m lda \u001b[38;5;241m=\u001b[39m LinearDiscriminantAnalysis(solver\u001b[38;5;241m=\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mlsqr\u001b[39m\u001b[38;5;124m'\u001b[39m, shrinkage\u001b[38;5;241m=\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mauto\u001b[39m\u001b[38;5;124m'\u001b[39m)  \u001b[38;5;66;03m# Optional: you can tweak parameters\u001b[39;00m\n\u001b[1;32m      8\u001b[0m \u001b[38;5;66;03m# Fit the LDA model\u001b[39;00m\n\u001b[0;32m----> 9\u001b[0m lda\u001b[38;5;241m.\u001b[39mfit(\u001b[43mX_train\u001b[49m\u001b[38;5;241m.\u001b[39mcpu()\u001b[38;5;241m.\u001b[39mnumpy(), y_train\u001b[38;5;241m.\u001b[39mcpu()\u001b[38;5;241m.\u001b[39mnumpy())\n\u001b[1;32m     11\u001b[0m \u001b[38;5;66;03m# Make predictions on the test set\u001b[39;00m\n\u001b[1;32m     12\u001b[0m y_pred \u001b[38;5;241m=\u001b[39m lda\u001b[38;5;241m.\u001b[39mpredict(X_test\u001b[38;5;241m.\u001b[39mcpu()\u001b[38;5;241m.\u001b[39mnumpy())\n",
++      "\u001b[0;31mNameError\u001b[0m: name 'X_train' is not defined"
+      ]
+     }
+    ],
+@@ -197,21 +201,10 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": 4,
++   "execution_count": 5,
+    "id": "ef515d5d-2663-4698-b56c-37915ba8cc27",
+    "metadata": {},
+-   "outputs": [
+-    {
+-     "name": "stderr",
+-     "output_type": "stream",
+-     "text": [
+-      "/root/miniconda3/envs/myenv/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:838: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.5 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.\n",
+-      "  return fn(*args, **kwargs)\n",
+-      "/root/miniconda3/envs/myenv/lib/python3.10/site-packages/torch/utils/checkpoint.py:86: UserWarning: None of the inputs have requires_grad=True. Gradients will be None\n",
+-      "  warnings.warn(\n"
+-     ]
+-    }
+-   ],
++   "outputs": [],
+    "source": [
+     "def extract_embeddings(dataloader, model, device):\n",
+     "    model.eval()\n",
+@@ -220,7 +213,7 @@
+     "        for x, y in dataloader:\n",
+     "            x = x.to(device)\n",
+     "            y = y.to(device)\n",
+-    "            feats = model._forward_features(x)  # Direct embeddings\n",
++    "            feats = model._forward_impl(x)\n",
+     "            feats = F.normalize(feats, p=2, dim=1)  # L2 normalization\n",
+     "            embeddings.append(feats)\n",
+     "            labels.append(y)\n",
+@@ -298,10 +291,38 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": null,
++   "execution_count": 7,
+    "id": "86bff8db-249c-4a4b-bff2-97453fdd2ae8",
+    "metadata": {},
+-   "outputs": [],
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "Epoch 1: Train Accuracy = 1.84%\n",
++      "Epoch 2: Train Accuracy = 3.83%\n",
++      "Epoch 3: Train Accuracy = 4.51%\n",
++      "Epoch 4: Train Accuracy = 4.80%\n",
++      "Epoch 5: Train Accuracy = 5.00%\n",
++      "Epoch 6: Train Accuracy = 5.17%\n",
++      "Epoch 7: Train Accuracy = 5.43%\n",
++      "Epoch 8: Train Accuracy = 5.55%\n",
++      "Epoch 9: Train Accuracy = 5.74%\n",
++      "Epoch 10: Train Accuracy = 5.82%\n",
++      "Epoch 11: Train Accuracy = 5.87%\n",
++      "Epoch 12: Train Accuracy = 5.94%\n",
++      "Epoch 13: Train Accuracy = 6.09%\n",
++      "Epoch 14: Train Accuracy = 6.13%\n",
++      "Epoch 15: Train Accuracy = 6.21%\n",
++      "Epoch 16: Train Accuracy = 6.30%\n",
++      "Epoch 17: Train Accuracy = 6.35%\n",
++      "Epoch 18: Train Accuracy = 6.44%\n",
++      "Epoch 19: Train Accuracy = 6.58%\n",
++      "Epoch 20: Train Accuracy = 6.53%\n",
++      "Test Accuracy = 5.64%\n"
++     ]
++    }
++   ],
+    "source": [
+     "import torch\n",
+     "import torch.nn as nn\n",
+@@ -319,7 +340,7 @@
+     "# --- Config ---\n",
+     "batch_size = 4096\n",
+     "lr = 1e-2\n",
+-    "epochs = 10\n",
++    "epochs = 20\n",
+     "device = 'cuda' if torch.cuda.is_available() else 'cpu'\n",
+     "\n",
+     "# --- Prepare data ---\n",
+diff --git a/eval.py b/eval.py
+index b40d118..16237a4 100644
+--- a/eval.py
++++ b/eval.py
+@@ -1,10 +1,17 @@
+ import torch
++import torch.nn as nn
+ import torch.nn.functional as F
+-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+ from sklearn.metrics import accuracy_score
+ import torch.distributed as dist
+-from contextlib import nullcontext
+-from tqdm import tqdm
++from torch.utils.data import TensorDataset, DataLoader
++
++class LinearClassifier(nn.Module):
++    def __init__(self, input_dim, num_classes):
++        super().__init__()
++        self.linear = nn.Linear(input_dim, num_classes)
++
++    def forward(self, x):
++        return self.linear(x)
+ 
+ def gather_tensor(tensor):
+     world_size = dist.get_world_size()
+@@ -12,9 +19,7 @@ def gather_tensor(tensor):
+     dist.all_gather(tensors_gather, tensor)
+     return torch.cat(tensors_gather, dim=0)
+ 
+-
+-
+-def run_lda_on_embeddings(train_loader, val_loader, model, device=None, use_amp=True):
++def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None, use_amp=True):
+     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+     model.to(device)
+     model.eval()
+@@ -22,10 +27,8 @@ def run_lda_on_embeddings(train_loader, val_loader, model, device=None, use_amp=
+     def extract_embeddings(loader):
+         embeddings, labels = [], []
+         rank = dist.get_rank() if dist.is_initialized() else 0
+-        progress = tqdm(loader) if rank == 0 else nullcontext(loader)
+-    
+         with torch.no_grad():
+-            for x, y in progress:
++            for x, y in loader:
+                 x = x.to(device, non_blocking=True)
+                 y = y.to(device, non_blocking=True)
+                 with torch.cuda.amp.autocast(enabled=use_amp):
+@@ -40,21 +43,65 @@ def run_lda_on_embeddings(train_loader, val_loader, model, device=None, use_amp=
+         if dist.is_initialized():
+             embeddings = gather_tensor(embeddings)
+             labels = gather_tensor(labels)
+-    
+-    
+-            return embeddings.cpu().numpy(), labels.cpu().numpy()
++        
++        return embeddings, labels  # Keep everything on the GPU
+ 
+     X_train, y_train = extract_embeddings(train_loader)
+     X_val, y_val = extract_embeddings(val_loader)
+-    print("rank done",dist.get_rank())
++    print("rank done", dist.get_rank())
++    
+     if dist.get_rank() == 0:
+-        print("LDA on ",X_train.shape)
+-        lda = LinearDiscriminantAnalysis(solver='lsqr', shrinkage='auto')
+-        lda.fit(X_train, y_train)
+-        y_pred = lda.predict(X_val)
+-        acc = accuracy_score(y_val, y_pred)
+-        print(f"LDA Test Accuracy: {acc * 100:.2f}%")
+-        return acc
++        print("Linear probing on embeddings with shape", X_train.shape)
++
++        # Prepare data loaders for linear probing (already on CUDA)
++        train_ds = TensorDataset(X_train, y_train)
++        val_ds = TensorDataset(X_val, y_val)
++
++        train_loader = DataLoader(train_ds, batch_size=4096, shuffle=True)
++        val_loader = DataLoader(val_ds, batch_size=4096)
++
++        # Define linear classifier
++        classifier = LinearClassifier(X_train.shape[1], int(y_train.max()) + 1).to(device)
++        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-2)
++        criterion = nn.CrossEntropyLoss()
++
++        # --- Training ---
++        epochs = 10
++        for epoch in range(epochs):
++            classifier.train()
++            correct, total = 0, 0
++            for xb, yb in train_loader:
++                xb, yb = xb.to(device), yb.to(device)
++                out = classifier(xb)
++                loss = criterion(out, yb)
++
++                optimizer.zero_grad()
++                loss.backward()
++                optimizer.step()
++
++                preds = out.argmax(dim=1)
++                correct += (preds == yb).sum().item()
++                total += yb.size(0)
++
++            acc = correct / total * 100
++            print(f"Epoch {epoch+1}: Train Accuracy = {acc:.2f}%")
++            print('total samples', total)
++
++        # --- Evaluation ---
++        classifier.eval()
++        correct, total = 0, 0
++        with torch.no_grad():
++            for xb, yb in val_loader:
++                xb, yb = xb.to(device), yb.to(device)
++                preds = classifier(xb).argmax(dim=1)
++                correct += (preds == yb).sum().item()
++                total += yb.size(0)
++
++        test_acc = correct / total * 100
++        print(f"Test Accuracy = {test_acc:.2f}%")
++        return test_acc
+     else:
+-        return None  # only rank 0 computes LDA
++        return None  # only rank 0 computes linear probe
++
++
+ 
+diff --git a/train.py b/train.py
+index 0f4bfd8..ee8d316 100644
+--- a/train.py
++++ b/train.py
+@@ -30,7 +30,7 @@ import wandb
+ from lda import LDA, lda_loss, sina_loss, SphericalLDA
+ from models import ResNet, BasicBlock
+ from utils import compute_wandb_metrics
+-from eval import run_lda_on_embeddings
++from eval import run_linear_probe_on_embeddings
+ 
+ def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
+     return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
+@@ -210,7 +210,7 @@ class Solver:
+             # All processes run this to contribute their part of the embeddings
+             import time
+             start_time = time.time()
+-            lda_accuracy = run_lda_on_embeddings(
++            lda_accuracy = run_linear_probe_on_embeddings(
+                 self.dataloaders['complete_train'],
+                 self.dataloaders['val'],
+                 self.get_net(),
+diff --git a/wandb/latest-run b/wandb/latest-run
+index bc89c32..710b4c2 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250501_015147-nuoo125w
+\ No newline at end of file
++run-20250501_172906-uyn62eav
+\ No newline at end of file
+diff --git a/wandb/run-20250501_015147-nuoo125w/run-nuoo125w.wandb b/wandb/run-20250501_015147-nuoo125w/run-nuoo125w.wandb
+index e69de29..fe857b6 100644
+Binary files a/wandb/run-20250501_015147-nuoo125w/run-nuoo125w.wandb and b/wandb/run-20250501_015147-nuoo125w/run-nuoo125w.wandb differ
