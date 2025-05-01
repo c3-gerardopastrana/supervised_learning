@@ -387,15 +387,10 @@ def train_worker(rank, world_size, config):
         normalize,
     ])
     
-    
+    # Create subset
     trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
     valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
     testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
-
-    # Create subset
-    transit_size = int(0.1 * len(trainset))
-    indices = random.sample(range(len(trainset)), transit_size)
-    transit_subset = Subset(trainset, indices)
 
     # Create distributed samplers
     train_sampler = ClassBalancedBatchSampler(
@@ -410,7 +405,7 @@ def train_worker(rank, world_size, config):
 
     val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
     test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
-    complete_train_sampler = DistributedSampler(transit_subset, num_replicas=world_size, rank=rank, shuffle=False)
+    complete_train_sampler = DistributedSampler(trainset, num_replicas=world_size, rank=rank, shuffle=False)
     
 
     # Create dataloaders
@@ -440,7 +435,7 @@ def train_worker(rank, world_size, config):
     )
         
     complete_train_loader = torch.utils.data.DataLoader(
-        transit_subset, 
+        trainset, 
         batch_size=config['batch_size'],
         sampler=complete_train_sampler,
         num_workers=config['num_workers'],

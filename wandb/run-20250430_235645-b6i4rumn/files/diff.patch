@@ -1,0 +1,69 @@
+Submodule apex contains modified content
+diff --git a/apex/setup.py b/apex/setup.py
+index 4aa6616..3e369a7 100644
+--- a/apex/setup.py
++++ b/apex/setup.py
+@@ -37,15 +37,15 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
+     print("\nCompiling cuda extensions with")
+     print(raw_output + "from " + cuda_dir + "/bin\n")
+ 
+-    if (bare_metal_version != torch_binary_version):
+-        raise RuntimeError(
+-            "Cuda extensions are being compiled with a version of Cuda that does "
+-            "not match the version used to compile Pytorch binaries.  "
+-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
+-            + "In some cases, a minor-version mismatch will not cause later errors:  "
+-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
+-            "You can try commenting out this check (at your own risk)."
+-        )
++    # if (bare_metal_version != torch_binary_version):
++    #     raise RuntimeError(
++    #         "Cuda extensions are being compiled with a version of Cuda that does "
++    #         "not match the version used to compile Pytorch binaries.  "
++    #         "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
++    #         + "In some cases, a minor-version mismatch will not cause later errors:  "
++    #         "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
++    #         "You can try commenting out this check (at your own risk)."
++    #     )
+ 
+ 
+ def raise_if_cuda_home_none(global_option: str) -> None:
+diff --git a/eval.py b/eval.py
+index eb92927..cf6f1a5 100644
+--- a/eval.py
++++ b/eval.py
+@@ -17,12 +17,10 @@ def run_lda_on_embeddings(train_loader, val_loader, model, device=None, use_amp=
+     model.to(device)
+     model.eval()
+ 
+-    def extract_embeddings(loader, split_name):
++    def extract_embeddings(loader):
+         embeddings, labels = [], []
+-        rank = dist.get_rank() if dist.is_initialized() else 0
+-        desc = f"[{split_name}] Rank {rank}"
+         with torch.no_grad():
+-            for x, y in tqdm(loader, desc=desc, leave=False):
++            for x, y in tqdm(loader):
+                 x = x.to(device, non_blocking=True)
+                 y = y.to(device, non_blocking=True)
+                 with torch.cuda.amp.autocast(enabled=use_amp):
+@@ -45,6 +43,7 @@ def run_lda_on_embeddings(train_loader, val_loader, model, device=None, use_amp=
+     X_val, y_val = extract_embeddings(val_loader)
+     print("rank done",dist.get_rank())
+     if dist.get_rank() == 0:
++        print("LDA on ",X_train.shape)
+         lda = LinearDiscriminantAnalysis(solver='lsqr', shrinkage='auto')
+         lda.fit(X_train, y_train)
+         y_pred = lda.predict(X_val)
+diff --git a/wandb/latest-run b/wandb/latest-run
+index f3087a6..e9d9283 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250430_230948-up74d2pj
+\ No newline at end of file
++run-20250430_235645-b6i4rumn
+\ No newline at end of file
+diff --git a/wandb/run-20250430_230948-up74d2pj/run-up74d2pj.wandb b/wandb/run-20250430_230948-up74d2pj/run-up74d2pj.wandb
+index 93ae6ef..80d0c0e 100644
+Binary files a/wandb/run-20250430_230948-up74d2pj/run-up74d2pj.wandb and b/wandb/run-20250430_230948-up74d2pj/run-up74d2pj.wandb differ
