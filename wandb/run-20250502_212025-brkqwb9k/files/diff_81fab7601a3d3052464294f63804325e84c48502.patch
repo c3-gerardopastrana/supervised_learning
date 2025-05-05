@@ -1,0 +1,159 @@
+diff --git a/lda.py b/lda.py
+index 89aac69..0c6ceb6 100644
+--- a/lda.py
++++ b/lda.py
+@@ -2,6 +2,7 @@ import torch
+ import torch.nn as nn
+ from functools import partial
+ import torch.nn.functional as F
++from sklearn.covariance import ledoit_wolf_shrinkage
+ 
+ def lda(X, y, n_classes, lamb):
+     X = X.view(X.shape[0], -1)
+@@ -40,10 +41,19 @@ def lda(X, y, n_classes, lamb):
+     
+     # Add regularization to Sw
+     Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++    #Sw_np = Sw.cpu().detach().numpy()
++    #lw = ledoit_wolf().fit(Sw_np)  # add a sample axis if needed
++    # shrinkage = lamb#ledoit_wolf_shrinkage(Sw_np)
++    # mu = torch.trace(Sw) / Sw.shape[0]
++
++    # Apply shrinkage — differentiable
++    #Sw = (1 - shrinkage) * Sw + shrinkage * mu * torch.eye(Sw.shape[0], device=Sw.device, dtype=Sw.dtype)
++    #Sw =  Sw +  mu * torch.eye(Sw.shape[0], device=Sw.device, dtype=Sw.dtype)
++    #Sw =  mu * torch.eye(Sw.shape[0], device=Sw.device, dtype=Sw.dtype)
+     
+     
+ 
+-    temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
++    temp = torch.linalg.solve(Sw, Sb)#torch.linalg.lstsq(Sw, Sb).solution #torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+     # # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
+     # evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)
+     # print(evals.shape, evecs.shape)
+@@ -135,8 +145,11 @@ def sina_loss(sigma_w_inv_b):
+     # # loss = torch.norm(diff, p='fro')**2
+ 
+     # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
+-    lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+-    penalty = (trace - lambda_target).pow(2) / lambda_target  # scale-free, minimal tuning
++    # lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    # penalty = (trace - lambda_target).pow(2) / lambda_target  # scale-free, minimal tuning
++    lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    diff = lambda_target - trace  # positive if trace < lambda_target
++    penalty = F.relu(diff).pow(2) / lambda_target.pow(2)  # scale-free, no penalty if trace >= lambda_target
+ 
+     loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
+     
+diff --git a/train.py b/train.py
+index ee8d316..3952fb9 100644
+--- a/train.py
++++ b/train.py
+@@ -81,7 +81,7 @@ class Solver:
+     
+         if hasComplexEVal:
+             print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
+-            return None, None, None
++            return None
+     
+         metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
+         loss = self.criterion(sigma_w_inv_b)
+@@ -208,20 +208,21 @@ class Solver:
+                 val_loss, val_acc = self.iterate(epoch, 'val')
+             
+             # All processes run this to contribute their part of the embeddings
+-            import time
+-            start_time = time.time()
+-            lda_accuracy = run_linear_probe_on_embeddings(
+-                self.dataloaders['complete_train'],
+-                self.dataloaders['val'],
+-                self.get_net(),
+-                use_amp=self.use_amp
+-            )
+-            
+-            # Only rank 0 gets accuracy; others get None
+-            if self.local_rank == 0 and lda_accuracy is not None:
+-                wandb.log({'lda_accuracy': lda_accuracy})
+-                elapsed_time = (time.time() - start_time) / 60  # convert to minutes
+-                print(f"Total time: {elapsed_time:.2f} minutes")
++            if epoch%5==0:
++                import time
++                start_time = time.time()
++                lda_accuracy = run_linear_probe_on_embeddings(
++                    self.dataloaders['complete_train'],
++                    self.dataloaders['val'],
++                    self.get_net(),
++                    use_amp=self.use_amp
++                )
++                
++                # Only rank 0 gets accuracy; others get None
++                if self.local_rank == 0 and lda_accuracy is not None:
++                    wandb.log({'lda_accuracy': lda_accuracy})
++                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
++                    print(f"Total time: {elapsed_time:.2f} minutes")
+ 
+     
+             # Save best model
+@@ -388,12 +389,38 @@ def train_worker(rank, world_size, config):
+     ])
+     
+     
+-    trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+-    valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+-    testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++
++
++
++    # Load the full datasets
++    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    
++    # Select 10 class indices (e.g., 10 random or specific ones)
++    selected_classes = list(range(10))  # or any 10 specific indices you want
++    
++    # Map class name to index
++    class_to_idx = trainset_full.class_to_idx
++    idx_to_class = {v: k for k, v in class_to_idx.items()}
++    
++    # Create a filter function
++    def filter_by_class(dataset, allowed_classes):
++        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
++        return Subset(dataset, indices)
++    
++    # Create filtered datasets
++    trainset = filter_by_class(trainset_full, selected_classes)
++    valset = filter_by_class(valset_full, selected_classes)
++    testset = filter_by_class(testset_full, selected_classes)
++
++    
+ 
+     # Create subset
+-    transit_size = int(0.1 * len(trainset))
++    transit_size = int(1 * len(trainset))
+     indices = random.sample(range(len(trainset)), transit_size)
+     transit_subset = Subset(trainset, indices)
+ 
+@@ -498,8 +525,8 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 25,
+-        'k_classes': 64,
+-        'n_samples': 128,
++        'k_classes': 10,
++        'n_samples': 64,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+         'use_amp': True,                   # Use automatic mixed precision
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 710b4c2..909fd73 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250501_172906-uyn62eav
+\ No newline at end of file
++run-20250502_212025-brkqwb9k
+\ No newline at end of file

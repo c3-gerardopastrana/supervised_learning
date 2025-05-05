@@ -1,0 +1,51 @@
+diff --git a/lda.py b/lda.py
+index 89aac69..e3ff1c1 100644
+--- a/lda.py
++++ b/lda.py
+@@ -43,7 +43,7 @@ def lda(X, y, n_classes, lamb):
+     
+     
+ 
+-    temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
++    temp = torch.linalg.lstsq(Sw, Sb).solution #torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+     # # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
+     # evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)
+     # print(evals.shape, evecs.shape)
+diff --git a/train.py b/train.py
+index ee8d316..a0d5145 100644
+--- a/train.py
++++ b/train.py
+@@ -81,7 +81,7 @@ class Solver:
+     
+         if hasComplexEVal:
+             print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
+-            return None, None, None
++            return None
+     
+         metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
+         loss = self.criterion(sigma_w_inv_b)
+@@ -494,12 +494,12 @@ if __name__ == '__main__':
+         'test_dir': '/data/datasets/imagenet_full_size/061417/test',
+         'model_path': 'models/deeplda_best.pth',
+         'loss': 'LDA',
+-        'lamb': 0.1,
++        'lamb': 0.0001,
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 25,
+-        'k_classes': 64,
+-        'n_samples': 128,
++        'k_classes': 128,
++        'n_samples': 64,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+         'use_amp': True,                   # Use automatic mixed precision
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 710b4c2..9269fca 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250501_172906-uyn62eav
+\ No newline at end of file
++run-20250501_195430-wde1m72m
+\ No newline at end of file

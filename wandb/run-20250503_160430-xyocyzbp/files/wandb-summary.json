@@ -1,0 +1,1 @@
+{"acc_train":60.703125,"grad_norm":5.171414375305176,"lda_accuracy":66.8,"_step":357,"_wandb":{"runtime":1931},"loss_val":0.9698627591133118,"loss_train":1.05194034576416,"epoch_train":49,"epoch_val":49,"_runtime":1931.035986262,"_timestamp":1.7462902012553284e+09,"acc_val":68.60000000000001}

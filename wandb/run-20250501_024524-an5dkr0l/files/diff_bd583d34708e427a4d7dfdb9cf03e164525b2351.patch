@@ -1,0 +1,41 @@
+diff --git a/eval.py b/eval.py
+index b40d118..ff4bde3 100644
+--- a/eval.py
++++ b/eval.py
+@@ -22,10 +22,10 @@ def run_lda_on_embeddings(train_loader, val_loader, model, device=None, use_amp=
+     def extract_embeddings(loader):
+         embeddings, labels = [], []
+         rank = dist.get_rank() if dist.is_initialized() else 0
+-        progress = tqdm(loader) if rank == 0 else nullcontext(loader)
++        #progress = tqdm(loader) if rank == 0 else nullcontext(loader)
+     
+         with torch.no_grad():
+-            for x, y in progress:
++            for x, y in loader:
+                 x = x.to(device, non_blocking=True)
+                 y = y.to(device, non_blocking=True)
+                 with torch.cuda.amp.autocast(enabled=use_amp):
+diff --git a/train.py b/train.py
+index 0f4bfd8..162dac0 100644
+--- a/train.py
++++ b/train.py
+@@ -498,8 +498,8 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 25,
+-        'k_classes': 64,
+-        'n_samples': 128,
++        'k_classes': 128,
++        'n_samples': 64,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+         'use_amp': True,                   # Use automatic mixed precision
+diff --git a/wandb/latest-run b/wandb/latest-run
+index bc89c32..ebdfe51 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250501_015147-nuoo125w
+\ No newline at end of file
++run-20250501_024524-an5dkr0l
+\ No newline at end of file

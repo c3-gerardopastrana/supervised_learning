@@ -1,0 +1,24 @@
+diff --git a/train.py b/train.py
+index 0b980dd..d0d4308 100644
+--- a/train.py
++++ b/train.py
+@@ -493,8 +493,8 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 25,
+-        'k_classes': 64,
+-        'n_samples': 128,
++        'k_classes': 128,
++        'n_samples': 64,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+         'use_amp': True,                   # Use automatic mixed precision
+diff --git a/wandb/latest-run b/wandb/latest-run
+index f3087a6..15ac614 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250430_230948-up74d2pj
+\ No newline at end of file
++run-20250430_232735-qe625w1w
+\ No newline at end of file

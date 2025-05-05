@@ -1,7 +1,67 @@
+
+
 import torch
 import torch.nn as nn
 from functools import partial
 import torch.nn.functional as F
+from sklearn.covariance import ledoit_wolf_shrinkage
+
+
+
+
+def soft_thresholding(X, lmbda):
+    return torch.sign(X) * torch.clamp(torch.abs(X) - lmbda, min=0.0)
+
+def graphical_lasso(S, lmbda=1, max_iter=5, tol=1e-4):
+    """
+    Sparse inverse covariance estimation via graphical lasso (block coordinate descent).
+    
+    Args:
+        S (torch.Tensor): Empirical covariance matrix, shape (p, p)
+        lmbda (float): Sparsity regularization strength (λ)
+        max_iter (int): Max iterations
+        tol (float): Convergence tolerance
+    
+    Returns:
+        Theta (torch.Tensor): Estimated sparse inverse covariance (precision matrix)
+        Sigma (torch.Tensor): Estimated covariance matrix (inverse of Theta)
+    """
+    print('start')
+    p = S.shape[0]
+    W = S.clone()
+    Theta = torch.inverse(W)
+    
+    for iteration in range(max_iter):
+        Theta_old = Theta.clone()
+
+        for j in range(p):
+            # Partition the matrix
+            idx = [i for i in range(p) if i != j]
+            S11 = S[idx][:, idx]
+            s12 = S[idx, j]
+            theta12 = Theta[idx, j]
+
+            # Solve lasso subproblem: β = argmin ½ βᵀ S11 β - s12ᵀ β + λ‖β‖₁
+            # Using coordinate descent on β
+            beta = theta12.clone()
+            for _ in range(10):  # inner loop for convergence
+                for k in range(p - 1):
+                    tmp = s12[k] - S11[k, :].dot(beta) + S11[k, k] * beta[k]
+                    beta[k] = soft_thresholding(tmp, lmbda) / S11[k, k]
+            
+            # Update precision matrix
+            Theta[j, idx] = Theta[idx, j] = -beta
+            Theta[j, j] = 1.0 / (S[j, j] - s12.dot(beta))
+
+        # Check convergence
+        delta = torch.norm(Theta - Theta_old, p='fro') / torch.norm(Theta_old, p='fro')
+        if delta < tol:
+            break
+
+    #Sigma = torch.inverse(Theta)
+    return Theta
+
+
 
 def lda(X, y, n_classes, lamb):
     X = X.view(X.shape[0], -1)
@@ -39,11 +99,35 @@ def lda(X, y, n_classes, lamb):
     Sb = St - Sw
     
     # Add regularization to Sw
+    #lamb = torch.trace(Sw) / D
+    #Sw = graphical_lasso(Sw)
+    
     Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
-    
-    
+    #Sw_np = Sw.cpu().detach().numpy()
+    #lw = ledoit_wolf().fit(Sw_np)  # add a sample axis if needed
+    # shrinkage = 0.8
+    # mu = torch.trace(Sw) / D
 
-    temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+    # Apply shrinkage — differentiable
+    # Sw = (1 - shrinkage) * Sw + shrinkage * mu * torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False)
+    #Sw =  Sw +  mu * torch.eye(Sw.shape[0], device=Sw.device, dtype=Sw.dtype)
+    #Sw =  mu * torch.eye(Sw.shape[0], device=Sw.device, dtype=Sw.dtype)
+    # diag_values = torch.rand(D, device="cuda") * 0.0001  # Uniform[0, lam)
+    # Sw = Sw + torch.diag(diag_values)
+    
+    # L = torch.linalg.cholesky(Sw)
+    # I = torch.eye(L.size(0), device=L.device, dtype=L.dtype)
+    # L_inv = torch.linalg.solve(L, I)  # L^{-1}
+    # temp = L_inv @ Sb @ L_inv.T  # This is similar to Sw^{-1/2} @ Sb @ Sw^{-1/2}
+    
+    # L = torch.linalg.cholesky(Sw)
+    # A1 = torch.linalg.solve_triangular(L, Sb, upper=False)
+    # temp = torch.linalg.solve_triangular(L.T, Sb, upper=True, left=False)
+
+    
+    temp =  torch.linalg.lstsq(Sw, Sb).solution #torch.linalg.solve(Sw, Sb) # # #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+    #temp = 0.5 * (temp + temp.T) 
+
     # # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
     # evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)
     # print(evals.shape, evecs.shape)
@@ -64,7 +148,12 @@ def lda(X, y, n_classes, lamb):
     # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
     # Use the new torch.linalg.eig for general matrices
     # It returns complex eigenvalues and eigenvectors by default
+    #temp = temp.to(dtype=torch.float32)
+
+
+    
     evals_complex, evecs_complex = torch.linalg.eig(temp)
+    
 
     # Process complex eigenvalues returned by torch.linalg.eig
     # Check for eigenvalues with non-negligible imaginary parts
@@ -135,8 +224,11 @@ def sina_loss(sigma_w_inv_b):
     # # loss = torch.norm(diff, p='fro')**2
 
     # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
-    lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
-    penalty = (trace - lambda_target).pow(2) / lambda_target  # scale-free, minimal tuning
+    # lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    # penalty = (trace - lambda_target).pow(2) / lambda_target  # scale-free, minimal tuning
+    lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    diff = lambda_target - trace  # positive if trace < lambda_target
+    penalty = F.relu(diff).pow(2) / lambda_target.pow(2)  # scale-free, no penalty if trace >= lambda_target
 
     loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
     
