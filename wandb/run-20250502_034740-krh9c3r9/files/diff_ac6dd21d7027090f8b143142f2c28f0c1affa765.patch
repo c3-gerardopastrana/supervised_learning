@@ -1,0 +1,55 @@
+Submodule apex contains modified content
+diff --git a/apex/setup.py b/apex/setup.py
+index 4aa6616..3e369a7 100644
+--- a/apex/setup.py
++++ b/apex/setup.py
+@@ -37,15 +37,15 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
+     print("\nCompiling cuda extensions with")
+     print(raw_output + "from " + cuda_dir + "/bin\n")
+ 
+-    if (bare_metal_version != torch_binary_version):
+-        raise RuntimeError(
+-            "Cuda extensions are being compiled with a version of Cuda that does "
+-            "not match the version used to compile Pytorch binaries.  "
+-            "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
+-            + "In some cases, a minor-version mismatch will not cause later errors:  "
+-            "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
+-            "You can try commenting out this check (at your own risk)."
+-        )
++    # if (bare_metal_version != torch_binary_version):
++    #     raise RuntimeError(
++    #         "Cuda extensions are being compiled with a version of Cuda that does "
++    #         "not match the version used to compile Pytorch binaries.  "
++    #         "Pytorch binaries were compiled with Cuda {}.\n".format(torch.version.cuda)
++    #         + "In some cases, a minor-version mismatch will not cause later errors:  "
++    #         "https://github.com/NVIDIA/apex/pull/323#discussion_r287021798.  "
++    #         "You can try commenting out this check (at your own risk)."
++    #     )
+ 
+ 
+ def raise_if_cuda_home_none(global_option: str) -> None:
+diff --git a/train.py b/train.py
+index 8e7ceec..366d81c 100644
+--- a/train.py
++++ b/train.py
+@@ -494,7 +494,7 @@ if __name__ == '__main__':
+         'test_dir': '/data/datasets/imagenet_full_size/061417/test',
+         'model_path': 'models/deeplda_best.pth',
+         'loss': 'LDA',
+-        'lamb': 0.1,
++        'lamb': 0.001,
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 25,
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 348b0df..c972b37 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250501_223401-hduatagi
+\ No newline at end of file
++run-20250502_034740-krh9c3r9
+\ No newline at end of file
+diff --git a/wandb/run-20250501_223401-hduatagi/run-hduatagi.wandb b/wandb/run-20250501_223401-hduatagi/run-hduatagi.wandb
+index c515fad..b20b3cf 100644
+Binary files a/wandb/run-20250501_223401-hduatagi/run-hduatagi.wandb and b/wandb/run-20250501_223401-hduatagi/run-hduatagi.wandb differ

@@ -44,6 +44,7 @@ def lda(X, y, n_classes, lamb):
     
 
     temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+    
     # # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
     # evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)
     # print(evals.shape, evecs.shape)

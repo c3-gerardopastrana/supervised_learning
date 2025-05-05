@@ -81,7 +81,7 @@ class Solver:
     
         if hasComplexEVal:
             print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
-            return None, None, None
+            return None
     
         metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
         loss = self.criterion(sigma_w_inv_b)
@@ -494,12 +494,12 @@ if __name__ == '__main__':
         'test_dir': '/data/datasets/imagenet_full_size/061417/test',
         'model_path': 'models/deeplda_best.pth',
         'loss': 'LDA',
-        'lamb': 0.1,
+        'lamb': 0.001,
         'n_eig': 4,
         'margin': None,
         'epochs': 25,
-        'k_classes': 16,
-        'n_samples': 512,
+        'k_classes': 256,
+        'n_samples': 32,
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
         'use_amp': True,                   # Use automatic mixed precision
