@@ -77,13 +77,13 @@ class Solver:
 
     def handle_lda(self, inputs, targets, epoch, batch_idx):
         net = self.get_net()
-        hasComplexEVal, feas, outputs, sigma_w_inv_b = net(inputs, targets, epoch)
+        hasComplexEVal, feas, outputs, sigma_w_inv_b, sigma_w, sigma_b = net(inputs, targets, epoch)
     
         if hasComplexEVal:
             print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
             return None
     
-        metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
+        metrics = compute_wandb_metrics(outputs, sigma_w_inv_b, sigma_w, sigma_b)
         loss = self.criterion(sigma_w_inv_b)
         outputs = net.lda.predict_proba(feas)
     
@@ -208,20 +208,25 @@ class Solver:
                 val_loss, val_acc = self.iterate(epoch, 'val')
             
             # All processes run this to contribute their part of the embeddings
-            import time
-            start_time = time.time()
-            lda_accuracy = run_linear_probe_on_embeddings(
-                self.dataloaders['complete_train'],
-                self.dataloaders['val'],
-                self.get_net(),
-                use_amp=self.use_amp
-            )
+            
             
             # Only rank 0 gets accuracy; others get None
-            if self.local_rank == 0 and lda_accuracy is not None:
-                wandb.log({'lda_accuracy': lda_accuracy})
-                elapsed_time = (time.time() - start_time) / 60  # convert to minutes
-                print(f"Total time: {elapsed_time:.2f} minutes")
+            if epoch % 2 == 0:
+                import time
+                start_time = time.time()
+                lda_accuracy = run_linear_probe_on_embeddings(
+                    self.dataloaders['complete_train'],
+                    self.dataloaders['val'],
+                    self.get_net(),
+                    use_amp=self.use_amp
+                )
+                
+                # Only rank 0 gets accuracy; others get None
+                if self.local_rank == 0 and lda_accuracy is not None:
+                    wandb.log({'lda_accuracy': lda_accuracy})
+                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
+                    print(f"Total time: {elapsed_time:.2f} minutes")
+
 
     
             # Save best model
@@ -494,12 +499,12 @@ if __name__ == '__main__':
         'test_dir': '/data/datasets/imagenet_full_size/061417/test',
         'model_path': 'models/deeplda_best.pth',
         'loss': 'LDA',
-        'lamb': 0.001,
+        'lamb': 0.0001,
         'n_eig': 4,
         'margin': None,
         'epochs': 25,
-        'k_classes': 256,
-        'n_samples': 32,
+        'k_classes': 1000,
+        'n_samples': 8,
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
         'use_amp': True,                   # Use automatic mixed precision

@@ -66,7 +66,7 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
         criterion = nn.CrossEntropyLoss()
 
         # --- Training ---
-        epochs = 10
+        epochs = 20
         for epoch in range(epochs):
             classifier.train()
             correct, total = 0, 0

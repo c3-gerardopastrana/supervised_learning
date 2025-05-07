@@ -1,6 +1,6 @@
 import torch
 
-def compute_wandb_metrics(outputs, sigma_w_inv_b):
+def compute_wandb_metrics(outputs, sigma_w_inv_b, sigma_w, sigma_b):
     """
     Computes and returns a dictionary of metrics to be logged to wandb.
 
@@ -32,6 +32,14 @@ def compute_wandb_metrics(outputs, sigma_w_inv_b):
     off_diag = sigma_w_inv_b - torch.diag(torch.diagonal(sigma_w_inv_b))
     sum_squared_off_diag = torch.sum(off_diag ** 2).item()
     diag_var = torch.var(torch.diagonal(sigma_w_inv_b)).item()
+ 
+    trace_b = torch.trace(sigma_b).item()
+    trace_w = torch.trace(sigma_w).item()
+    
+    off_diag_b = sigma_b - torch.diag(torch.diagonal(sigma_b))
+    sum_squared_off_diag_b = torch.sum(off_diag_b ** 2).item()
+    off_diag_w = sigma_w - torch.diag(torch.diagonal(sigma_w))
+    sum_squared_off_diag_w = torch.sum(off_diag_w ** 2).item()
 
 
     metrics = {
@@ -46,6 +54,10 @@ def compute_wandb_metrics(outputs, sigma_w_inv_b):
         "condition_sigma": condition_sigma,
         "sum_squared_off_diag": sum_squared_off_diag,
         "diag_var": diag_var,
+        "trace_b": trace_b,
+        "trace_w":trace_w,
+        "sum_squared_off_diag_w":sum_squared_off_diag_w,
+        "sum_squared_off_diag_b":sum_squared_off_diag_b
     }
 
     return metrics

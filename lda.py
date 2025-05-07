@@ -38,12 +38,20 @@ def lda(X, y, n_classes, lamb):
     # Calculate between-class scatter matrix
     Sb = St - Sw
     
-    # Add regularization to Sw
-    Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
     
+    # mu = torch.trace(Sw) / D
+    # shrinkage = 0.9
     
 
-    temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+    #Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
+    
+    
+    # Generalized eigenvalue problem
+    #temp = torch.linalg.pinv(Sw_reg, hermitian=True) @ Sb
+    # Add regularization to Sw
+    
+    Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+    temp = torch.linalg.lstsq(Sw, Sb).solution #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
     
     # # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
     # evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)
@@ -89,7 +97,7 @@ def lda(X, y, n_classes, lamb):
         evals = torch.tensor([], dtype=temp.dtype, device=temp.device)
         D = temp.shape[0]
         evecs = torch.tensor([[] for _ in range(D)], dtype=temp.dtype, device=temp.device)
-    return hasComplexEVal, Xc_mean, evals, evecs, temp
+    return hasComplexEVal, Xc_mean, evals, evecs, temp, Sw, Sb
 
 
 def lda_loss(evals, n_classes, n_eig=None, margin=None):
@@ -137,7 +145,7 @@ def sina_loss(sigma_w_inv_b):
 
     # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
     lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
-    penalty = (trace - lambda_target).pow(2) / lambda_target  # scale-free, minimal tuning
+    penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)  # scale-free, minimal tuning
 
     loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
     
@@ -166,14 +174,14 @@ class LDA(nn.Module):
 
     def forward(self, X, y):
         # Perform batch-wise LDA (temporary, not global yet)
-        hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b = self.lda_layer(X, y)
+        hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b, sigma_w, sigma_b = self.lda_layer(X, y)
 
         # Save batch-wise scalings (not necessarily global yet)
         self.scalings_ = evecs
         self.coef_ = Xc_mean.matmul(evecs).matmul(evecs.t())
         self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t()))
 
-        return hasComplexEVal, evals, sigma_w_inv_b
+        return hasComplexEVal, evals, sigma_w_inv_b, sigma_w, sigma_b
 
     def transform(self, X):
         return X.matmul(self.scalings_)[:, :self.n_components]
