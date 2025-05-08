@@ -51,7 +51,8 @@ def lda(X, y, n_classes, lamb):
     # Add regularization to Sw
     
     Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
-    temp = torch.linalg.lstsq(Sw, Sb).solution #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+    temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+    #torch.linalg.lstsq(Sw, Sb).solution
     
     # # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
     # evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)

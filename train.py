@@ -499,7 +499,7 @@ if __name__ == '__main__':
         'test_dir': '/data/datasets/imagenet_full_size/061417/test',
         'model_path': 'models/deeplda_best.pth',
         'loss': 'LDA',
-        'lamb': 0.0001,
+        'lamb': 0.0002,
         'n_eig': 4,
         'margin': None,
         'epochs': 25,
