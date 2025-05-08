@@ -77,17 +77,21 @@ class Solver:
 
     def handle_lda(self, inputs, targets, epoch, batch_idx):
         net = self.get_net()
-        sigma_w_inv_b, sigma_w, sigma_b = net(inputs, targets, epoch)
+        hasComplexEVal, feas, outputs, sigma_w_inv_b = net(inputs, targets, epoch)
     
+        if hasComplexEVal:
+            print(f'Complex Eigenvalues found, skipping batch {batch_idx}')
+            return None
     
-        metrics = compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b)
+        metrics = compute_wandb_metrics(outputs, sigma_w_inv_b)
         loss = self.criterion(sigma_w_inv_b)
+        outputs = net.lda.predict_proba(feas)
     
         if self.local_rank == 0:
             wandb.log(metrics, commit=False)
             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
     
-        return loss, sigma_w_inv_b
+        return loss, outputs, feas, sigma_w_inv_b
 
     def iterate(self, epoch, phase):
         get_net = self.get_net()
@@ -103,6 +107,7 @@ class Solver:
         torch.cuda.empty_cache()
         gc.collect()
     
+       
         for batch_idx, (inputs, targets) in enumerate(dataloader):
             inputs = inputs.to(self.device, non_blocking=True)
             targets = targets.to(self.device, non_blocking=True)
@@ -111,7 +116,10 @@ class Solver:
                 self.optimizer.zero_grad(set_to_none=True)
                 with torch.cuda.amp.autocast(enabled=self.use_amp):
                     if self.use_lda:
-                        loss, sigma_w_inv_b = self.handle_lda(inputs, targets, epoch, batch_idx)
+                        result = self.handle_lda(inputs, targets, epoch, batch_idx)
+                        if result is None:
+                            continue
+                        loss, outputs, feas, sigma_w_inv_b = result
                     else:
                         outputs = get_net(inputs, targets, epoch)
                         loss = self.criterion(outputs, targets)
@@ -128,39 +136,51 @@ class Solver:
                 with torch.no_grad():
                     if self.use_lda:
                         result = self.handle_lda(inputs, targets, epoch, batch_idx)
-                        raise NotImplementedError("handle_lda is not implemented yet")
+                        if result is None:
+                            continue
+                        loss, outputs, _, _ = result
                     else:
                         outputs = get_net(inputs, targets, epoch)
                         loss = self.criterion(outputs, targets)
     
             total_loss += loss.item()
+            pred = torch.argmax(outputs.detach(), dim=1)
             total += targets.size(0)
+            correct += pred.eq(targets).sum().item()
     
-            del inputs, targets
-            if self.use_lda and phase == 'train':
-                del sigma_w_inv_b
+            del inputs, targets, outputs
+            if self.use_lda and phase == 'train' and result is not None:
+                del feas, sigma_w_inv_b
             torch.cuda.empty_cache()
     
             
         # Sync metrics across GPUs
         if self.world_size > 1:
-            metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
+            metrics = torch.tensor([total_loss, correct, total], dtype=torch.float32, device=self.device)
             dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
-            total_loss = metrics.tolist()
+            total_loss, correct, total = metrics.tolist()
             
-        total_loss /= (batch_idx + 1) * self.world_size
+        
+                
+        if total > 0:
+            total_acc = correct / total
+            total_loss /= (batch_idx + 1) * self.world_size
+        else:
+            total_acc = 0 
+        
         # Log metrics
         if self.local_rank == 0:
             if entropy_count > 0:
                 average_entropy = entropy_sum / entropy_count
                 print(f'Average Entropy: {average_entropy:.4f}')
             
-            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f}')
+            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f} | acc: {100.*total_acc:.2f}% ({correct}/{total})')
             wandb.log({
                 f"epoch_{phase}": epoch,
                 f"loss_{phase}": total_loss,
+                f"acc_{phase}": 100.*total_acc
             }) 
-        return total_loss
+        return total_loss, total_acc
             
 
     def save_checkpoint(self, epoch, val_loss, suffix=''):
@@ -173,7 +193,7 @@ class Solver:
         torch.save(checkpoint, path)
 
     def train(self, epochs):
-        best_loss = -float('inf')
+        best_loss = float('inf')
     
         for epoch in range(epochs):
             # Set epoch for distributed samplers
@@ -185,36 +205,41 @@ class Solver:
     
             # Training phase (we ignore returned values here)
             self.iterate(epoch, 'train')
+    
+            # Validation phase
+            with torch.no_grad():
+                val_loss, val_acc = self.iterate(epoch, 'val')
             
-            import time
-            start_time = time.time()
-            lda_accuracy = run_linear_probe_on_embeddings(
-                self.dataloaders['complete_train'],
-                self.dataloaders['val'],
-                self.get_net(),
-                use_amp=self.use_amp
-            )
-            
-            # Only rank 0 gets accuracy; others get None
-            if self.local_rank == 0 and lda_accuracy is not None:
-                wandb.log({'lda_accuracy': lda_accuracy})
-                elapsed_time = (time.time() - start_time) / 60  # convert to minutes
-                print(f"Total time: {elapsed_time:.2f} minutes")
-
+            # All processes run this to contribute their part of the embeddings
+            if epoch % 7 == 0:
+                import time
+                start_time = time.time()
+                lda_accuracy = run_linear_probe_on_embeddings(
+                    self.dataloaders['complete_train'],
+                    self.dataloaders['val'],
+                    self.get_net(),
+                    use_amp=self.use_amp
+                )
+                
+                # Only rank 0 gets accuracy; others get None
+                if self.local_rank == 0 and lda_accuracy is not None:
+                    wandb.log({'lda_accuracy': lda_accuracy})
+                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
+                    print(f"Total time: {elapsed_time:.2f} minutes")
 
     
             # Save best model
             if self.local_rank == 0:
-                if lda_accuracy < best_loss:
-                    best_loss = lda_accuracy
+                if val_loss < best_loss:
+                    best_loss = val_loss
                     print('Best val loss found')
-                    self.save_checkpoint(epoch, lda_accuracy)
+                    self.save_checkpoint(epoch, val_loss)
     
                 print()
     
         # Final save
         if self.local_rank == 0:
-            self.save_checkpoint(epochs - 1, lda_accuracy, suffix='final')
+            self.save_checkpoint(epochs - 1, val_loss, suffix='final')
 
 
 def setup(rank, world_size):
@@ -278,8 +303,8 @@ def train_worker(rank, world_size, config):
             total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
             batch_size = k_classes * n_samples
             print("total samples", total_samples)
-            print("batches per epoch", total_samples // batch_size)
-            self.batches_per_epoch = total_samples // batch_size
+            print("batches per epoch", total_samples // batch_size + 1)
+            self.batches_per_epoch = total_samples // batch_size + 1
     
         def set_epoch(self, epoch: int):
             self.epoch = epoch
@@ -367,14 +392,40 @@ def train_worker(rank, world_size, config):
     ])
     
     
-    trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
-    valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
-    testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+    # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+
+
+
+    # Load the full datasets
+    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+    
+    # Select 10 class indices (e.g., 10 random or specific ones)
+    selected_classes = list(range(100))  # or any 10 specific indices you want
+    
+    # Map class name to index
+    class_to_idx = trainset_full.class_to_idx
+    idx_to_class = {v: k for k, v in class_to_idx.items()}
+    
+    # Create a filter function
+    def filter_by_class(dataset, allowed_classes):
+        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
+        return Subset(dataset, indices)
+    
+    # Create filtered datasets
+    trainset = filter_by_class(trainset_full, selected_classes)
+    valset = filter_by_class(valset_full, selected_classes)
+    testset = filter_by_class(testset_full, selected_classes)
+
+    
 
     # Create subset
     transit_size = int(0.1 * len(trainset))
     indices = random.sample(range(len(trainset)), transit_size)
-    transit_subset = Subset(trainset, indices)
+    transit_subset = trainset#Subset(trainset, indices)
 
     # Create distributed samplers
     train_sampler = ClassBalancedBatchSampler(
@@ -464,27 +515,27 @@ if __name__ == '__main__':
         'wandb_entity': "gerardo-pastrana-c3-ai",
         'wandb_group': "gapLoss",
         'seed': 42,
-        'n_classes': 1000,
-        'train_val_split': 0.1,
+        'n_classes': 100,
+        'train_val_split': 0.01,
         'batch_size': 8192,  # Global batch size
         'num_workers': 1,  # Adjust based on CPU cores
         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
         'val_dir': '/data/datasets/imagenet_full_size/061417/val',
         'test_dir': '/data/datasets/imagenet_full_size/061417/test',
         'model_path': 'models/deeplda_best.pth',
-        'loss': 'LDA',
+        'loss': 'CE',
         'lamb': 0.0001,
         'n_eig': 4,
         'margin': None,
-        'epochs': 25,
-        'k_classes': 1000,
-        'n_samples': 8,
+        'epochs': 50,
+        'k_classes': 100,
+        'n_samples': 64,
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
         'use_amp': True,                   # Use automatic mixed precision
         'use_checkpointing': True,         # Use gradient checkpointing
         'base_lr': 1e-3,                   # Base learning rate
-        'base_batch_size': 128,            # Reference batch size for LR scaling
+        'base_batch_size': 512,            # Reference batch size for LR scaling
         'cuda_visible_devices': '',        # Optional GPU restrictions
     }
     

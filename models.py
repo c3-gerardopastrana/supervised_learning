@@ -97,8 +97,8 @@ class ResNet(nn.Module):
 
         if self.lda_args:
             fea = F.normalize(fea, p=2, dim=1)
-            hasComplexEVal, out, sigma_w_inv_b, sigma_w, sigma_b = self.lda(fea, y)
-            return hasComplexEVal, fea, out, sigma_w_inv_b, sigma_w, sigma_b
+            sigma_w_inv_b, sigma_w, sigma_b = self.lda(fea, y)
+            return sigma_w_inv_b, sigma_w, sigma_b
         else:
             out = self.linear(fea)
             return out

@@ -1,0 +1,80 @@
+_wandb:
+    value:
+        cli_version: 0.19.9
+        code_path: code/train.py
+        m: []
+        python_version: 3.11.4
+        t:
+            "1":
+                - 1
+                - 5
+                - 41
+                - 53
+                - 55
+            "2":
+                - 1
+                - 5
+                - 41
+                - 53
+                - 55
+            "3":
+                - 16
+                - 23
+                - 55
+            "4": 3.11.4
+            "5": 0.19.9
+            "8":
+                - 5
+                - 9
+            "12": 0.19.9
+            "13": linux-x86_64
+base_batch_size:
+    value: 512
+base_lr:
+    value: 0.001
+batch_size:
+    value: 8192
+cuda_visible_devices:
+    value: ""
+epochs:
+    value: 50
+gradient_accumulation_steps:
+    value: 1
+k_classes:
+    value: 10
+lamb:
+    value: 0.0001
+loss:
+    value: LDA
+margin:
+    value: null
+model_path:
+    value: models/deeplda_best.pth
+n_classes:
+    value: 1000
+n_eig:
+    value: 4
+n_samples:
+    value: 512
+num_workers:
+    value: 1
+seed:
+    value: 42
+test_dir:
+    value: /data/datasets/imagenet_full_size/061417/test
+train_dir:
+    value: /data/datasets/imagenet_full_size/061417/train
+train_val_split:
+    value: 0.01
+use_amp:
+    value: true
+use_checkpointing:
+    value: true
+val_dir:
+    value: /data/datasets/imagenet_full_size/061417/val
+wandb_entity:
+    value: gerardo-pastrana-c3-ai
+wandb_group:
+    value: gapLoss
+wandb_project:
+    value: DELETEME

@@ -37,67 +37,15 @@ def lda(X, y, n_classes, lamb):
     
     # Calculate between-class scatter matrix
     Sb = St - Sw
+    mu = torch.trace(Sw) / D
+    shrinkage = 0.9
+    Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
     
     
-    # mu = torch.trace(Sw) / D
-    # shrinkage = 0.9
+    #Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+    temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
     
-
-    #Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
-    
-    
-    # Generalized eigenvalue problem
-    #temp = torch.linalg.pinv(Sw_reg, hermitian=True) @ Sb
-    # Add regularization to Sw
-    
-    Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
-    temp = torch.linalg.lstsq(Sw, Sb).solution #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
-    
-    # # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
-    # evals, evecs = torch.eig(temp, eigenvectors=True) # shipped from nightly-built version (1.8.0.dev20201015)
-    # print(evals.shape, evecs.shape)
-
-    # # remove complex eigen values and sort
-    # noncomplex_idx = evals[:, 1] == 0
-    # evals = evals[:, 0][noncomplex_idx] # take real part of eigen values
-    # evecs = evecs[:, noncomplex_idx]
-    # evals, inc_idx = torch.sort(evals) # sort by eigen values, in ascending order
-    # evecs = evecs[:, inc_idx]
-    # print(evals.shape, evecs.shape)
-
-    # # flag to indicate if to skip backpropagation
-    # hasComplexEVal = evecs.shape[1] < evecs.shape[0]
-
-    # return hasComplexEVal, Xc_mean, evals, evecs
-    # compute eigen decomposition
-    # evals, evecs = torch.symeig(temp, eigenvectors=True) # only works for symmetric matrix
-    # Use the new torch.linalg.eig for general matrices
-    # It returns complex eigenvalues and eigenvectors by default
-    evals_complex, evecs_complex = torch.linalg.eig(temp)
-
-    # Process complex eigenvalues returned by torch.linalg.eig
-    # Check for eigenvalues with non-negligible imaginary parts
-    tol = 1e-6 # Tolerance for considering imaginary part zero
-    is_complex = torch.abs(evals_complex.imag) > tol
-    hasComplexEVal = torch.any(is_complex) # Flag if *any* eigenvalue was complex beyond tolerance
-
-    if hasComplexEVal:
-         # Optional: Print a warning if complex eigenvalues are detected
-         print(f"Warning: Found {torch.sum(is_complex)} eigenvalues with imaginary part > {tol}. Keeping only real eigenvalues.")
-
-    real_idx = ~is_complex
-    evals = evals_complex[real_idx].real 
-    evecs = evecs_complex[:, real_idx].real
-
-    if evals.numel() > 0: # Check if any real eigenvalues are left
-        evals, inc_idx = torch.sort(evals)
-        evecs = evecs[:, inc_idx]
-    else:
-        print("Warning: All eigenvalues were complex. Eigenvalue/vector tensors are empty.")
-        evals = torch.tensor([], dtype=temp.dtype, device=temp.device)
-        D = temp.shape[0]
-        evecs = torch.tensor([[] for _ in range(D)], dtype=temp.dtype, device=temp.device)
-    return hasComplexEVal, Xc_mean, evals, evecs, temp, Sw, Sb
+    return temp, Sw, Sb
 
 
 def lda_loss(evals, n_classes, n_eig=None, margin=None):
@@ -174,14 +122,9 @@ class LDA(nn.Module):
 
     def forward(self, X, y):
         # Perform batch-wise LDA (temporary, not global yet)
-        hasComplexEVal, Xc_mean, evals, evecs, sigma_w_inv_b, sigma_w, sigma_b = self.lda_layer(X, y)
+        sigma_w_inv_b, sigma_w, sigma_b = self.lda_layer(X, y)
 
-        # Save batch-wise scalings (not necessarily global yet)
-        self.scalings_ = evecs
-        self.coef_ = Xc_mean.matmul(evecs).matmul(evecs.t())
-        self.intercept_ = -0.5 * torch.diagonal(Xc_mean.matmul(self.coef_.t()))
-
-        return hasComplexEVal, evals, sigma_w_inv_b, sigma_w, sigma_b
+        return sigma_w_inv_b, sigma_w, sigma_b
 
     def transform(self, X):
         return X.matmul(self.scalings_)[:, :self.n_components]

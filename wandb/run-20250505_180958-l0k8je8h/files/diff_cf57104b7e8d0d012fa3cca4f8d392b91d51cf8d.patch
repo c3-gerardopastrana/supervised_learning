@@ -1,0 +1,68 @@
+diff --git a/lda.py b/lda.py
+index 7ecc705..3e855cf 100644
+--- a/lda.py
++++ b/lda.py
+@@ -102,14 +102,14 @@ def lda(X, y, n_classes, lamb):
+     #lamb = torch.trace(Sw) / D
+     #Sw = graphical_lasso(Sw)
+     
+-    Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++    #Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+     #Sw_np = Sw.cpu().detach().numpy()
+     #lw = ledoit_wolf().fit(Sw_np)  # add a sample axis if needed
+-    # shrinkage = 0.8
+-    # mu = torch.trace(Sw) / D
++    shrinkage = 0.2
++    mu = torch.trace(Sw) / D
+ 
+     # Apply shrinkage — differentiable
+-    # Sw = (1 - shrinkage) * Sw + shrinkage * mu * torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False)
++    Sw = (1 - shrinkage) * Sw + shrinkage * mu * torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False)
+     #Sw =  Sw +  mu * torch.eye(Sw.shape[0], device=Sw.device, dtype=Sw.dtype)
+     #Sw =  mu * torch.eye(Sw.shape[0], device=Sw.device, dtype=Sw.dtype)
+     # diag_values = torch.rand(D, device="cuda") * 0.0001  # Uniform[0, lam)
+diff --git a/train.py b/train.py
+index 86bebf7..46f1b83 100644
+--- a/train.py
++++ b/train.py
+@@ -404,7 +404,7 @@ def train_worker(rank, world_size, config):
+     testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+     
+     # Select 10 class indices (e.g., 10 random or specific ones)
+-    selected_classes = list(range(10))  # or any 10 specific indices you want
++    selected_classes = list(range(100))  # or any 10 specific indices you want
+     
+     # Map class name to index
+     class_to_idx = trainset_full.class_to_idx
+@@ -515,7 +515,7 @@ if __name__ == '__main__':
+         'wandb_entity': "gerardo-pastrana-c3-ai",
+         'wandb_group': "gapLoss",
+         'seed': 42,
+-        'n_classes': 1000,
++        'n_classes': 100,
+         'train_val_split': 0.01,
+         'batch_size': 8192,  # Global batch size
+         'num_workers': 1,  # Adjust based on CPU cores
+@@ -528,8 +528,8 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 50,
+-        'k_classes': 10,
+-        'n_samples': 512,
++        'k_classes': 100,
++        'n_samples': 64,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+         'use_amp': True,                   # Use automatic mixed precision
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 5701d1c..a10896e 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250505_154131-q14pc3hm
+\ No newline at end of file
++run-20250505_180958-l0k8je8h
+\ No newline at end of file
+diff --git a/wandb/run-20250505_154131-q14pc3hm/run-q14pc3hm.wandb b/wandb/run-20250505_154131-q14pc3hm/run-q14pc3hm.wandb
+index ca9d42a..7420a39 100644
+Binary files a/wandb/run-20250505_154131-q14pc3hm/run-q14pc3hm.wandb and b/wandb/run-20250505_154131-q14pc3hm/run-q14pc3hm.wandb differ
