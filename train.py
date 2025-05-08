@@ -80,10 +80,11 @@ class Solver:
         sigma_w_inv_b, sigma_w, sigma_b = net(inputs, targets, epoch)
     
     
-        metrics = compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b)
+        
         loss = self.criterion(sigma_w_inv_b)
     
-        if self.local_rank == 0:
+        if self.local_rank == 0 and epoch % 5:
+            metrics = compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b)
             wandb.log(metrics, commit=False)
             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
     
