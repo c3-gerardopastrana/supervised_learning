@@ -57,12 +57,12 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
         train_ds = TensorDataset(X_train, y_train)
         val_ds = TensorDataset(X_val, y_val)
 
-        train_loader = DataLoader(train_ds, batch_size=4096, shuffle=True)
-        val_loader = DataLoader(val_ds, batch_size=4096)
+        train_loader = DataLoader(train_ds, batch_size=1024, shuffle=True)
+        val_loader = DataLoader(val_ds, batch_size=1024)
 
         # Define linear classifier
         classifier = LinearClassifier(X_train.shape[1], int(y_train.max()) + 1).to(device)
-        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-2)
+        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3)
         criterion = nn.CrossEntropyLoss()
 
         # --- Training ---

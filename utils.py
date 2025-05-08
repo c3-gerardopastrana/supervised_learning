@@ -40,6 +40,8 @@ def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
     off_diag = sigma_w_inv_b - torch.diag(torch.diagonal(sigma_w_inv_b))
     sum_squared_off_diag = torch.sum(off_diag ** 2).item()
     diag_var = torch.var(torch.diagonal(sigma_w_inv_b)).item()
+    diag_var_b = torch.var(torch.diagonal(sigma_w_inv_b)).item()
+    diag_var_w = torch.var(torch.diagonal(sigma_w_inv_b)).item()
  
     trace_b = torch.trace(sigma_b).item()
     trace_w = torch.trace(sigma_w).item()
@@ -63,6 +65,8 @@ def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
         "condition_sigma": condition_sigma,
         "sum_squared_off_diag": sum_squared_off_diag,
         "diag_var": diag_var,
+        "diag_var_b": diag_var_b,
+        "diag_var_w": diag_var_w,
         "trace_b": trace_b,
         "trace_w":trace_w,
         "sum_squared_off_diag_w":sum_squared_off_diag_w,

@@ -1,0 +1,123 @@
+diff --git a/eval.py b/eval.py
+index d4c52df..fa031f6 100644
+--- a/eval.py
++++ b/eval.py
+@@ -57,12 +57,12 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
+         train_ds = TensorDataset(X_train, y_train)
+         val_ds = TensorDataset(X_val, y_val)
+ 
+-        train_loader = DataLoader(train_ds, batch_size=4096, shuffle=True)
+-        val_loader = DataLoader(val_ds, batch_size=4096)
++        train_loader = DataLoader(train_ds, batch_size=1024, shuffle=True)
++        val_loader = DataLoader(val_ds, batch_size=1024)
+ 
+         # Define linear classifier
+         classifier = LinearClassifier(X_train.shape[1], int(y_train.max()) + 1).to(device)
+-        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-2)
++        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3)
+         criterion = nn.CrossEntropyLoss()
+ 
+         # --- Training ---
+diff --git a/lda.py b/lda.py
+index 256cb1c..cb779d4 100644
+--- a/lda.py
++++ b/lda.py
+@@ -38,7 +38,7 @@ def lda(X, y, n_classes, lamb):
+     # Calculate between-class scatter matrix
+     Sb = St - Sw
+     mu = torch.trace(Sw) / D
+-    shrinkage = 0.9
++    shrinkage = 0.3
+     Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
+     
+     
+@@ -92,7 +92,7 @@ def sina_loss(sigma_w_inv_b):
+     # # loss = torch.norm(diff, p='fro')**2
+ 
+     # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
+-    lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+     penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)  # scale-free, minimal tuning
+ 
+     loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
+diff --git a/train.py b/train.py
+index 032688b..45613f5 100644
+--- a/train.py
++++ b/train.py
+@@ -83,7 +83,7 @@ class Solver:
+         
+         loss = self.criterion(sigma_w_inv_b)
+     
+-        if self.local_rank == 0 and epoch % 5:
++        if self.local_rank == 0 and batch_idx % 5==0:
+             metrics = compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b)
+             wandb.log(metrics, commit=False)
+             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
+@@ -123,7 +123,7 @@ class Solver:
+                 self.scaler.step(self.optimizer)
+                 self.scaler.update()
+     
+-                if self.local_rank == 0:
++                if self.local_rank == 0 and batch_idx % 5==0:
+                     wandb.log({"grad_norm": grad_norm.item()})
+             else:
+                 with torch.no_grad():
+@@ -147,7 +147,8 @@ class Solver:
+         if self.world_size > 1:
+             metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
+             dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+-            total_loss = metrics.tolist()
++            total_loss = metrics.item()
++
+             
+         total_loss /= (batch_idx + 1) * self.world_size
+         # Log metrics
+@@ -206,7 +207,7 @@ class Solver:
+     
+             # Save best model
+             if self.local_rank == 0:
+-                if lda_accuracy < best_loss:
++                if lda_accuracy > best_loss:
+                     best_loss = lda_accuracy
+                     print('Best val loss found')
+                     self.save_checkpoint(epoch, lda_accuracy)
+@@ -467,7 +468,7 @@ if __name__ == '__main__':
+         'seed': 42,
+         'n_classes': 1000,
+         'train_val_split': 0.1,
+-        'batch_size': 8192,  # Global batch size
++        'batch_size': 1024,  # Global batch size
+         'num_workers': 1,  # Adjust based on CPU cores
+         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
+         'val_dir': '/data/datasets/imagenet_full_size/061417/val',
+diff --git a/utils.py b/utils.py
+index e0d4915..3407b1a 100644
+--- a/utils.py
++++ b/utils.py
+@@ -40,6 +40,8 @@ def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
+     off_diag = sigma_w_inv_b - torch.diag(torch.diagonal(sigma_w_inv_b))
+     sum_squared_off_diag = torch.sum(off_diag ** 2).item()
+     diag_var = torch.var(torch.diagonal(sigma_w_inv_b)).item()
++    diag_var_b = torch.var(torch.diagonal(sigma_w_inv_b)).item()
++    diag_var_w = torch.var(torch.diagonal(sigma_w_inv_b)).item()
+  
+     trace_b = torch.trace(sigma_b).item()
+     trace_w = torch.trace(sigma_w).item()
+@@ -63,6 +65,8 @@ def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
+         "condition_sigma": condition_sigma,
+         "sum_squared_off_diag": sum_squared_off_diag,
+         "diag_var": diag_var,
++        "diag_var_b": diag_var_b,
++        "diag_var_w": diag_var_w,
+         "trace_b": trace_b,
+         "trace_w":trace_w,
+         "sum_squared_off_diag_w":sum_squared_off_diag_w,
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 962e84c..eef73ec 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250508_005918-wfft4o6b
+\ No newline at end of file
++run-20250508_113336-rvf41uiw
+\ No newline at end of file

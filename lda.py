@@ -38,7 +38,7 @@ def lda(X, y, n_classes, lamb):
     # Calculate between-class scatter matrix
     Sb = St - Sw
     mu = torch.trace(Sw) / D
-    shrinkage = 0.9
+    shrinkage = 0.3
     Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
     
     
@@ -92,7 +92,7 @@ def sina_loss(sigma_w_inv_b):
     # # loss = torch.norm(diff, p='fro')**2
 
     # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
-    lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
     penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)  # scale-free, minimal tuning
 
     loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty

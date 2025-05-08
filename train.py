@@ -83,7 +83,7 @@ class Solver:
         
         loss = self.criterion(sigma_w_inv_b)
     
-        if self.local_rank == 0 and epoch % 5:
+        if self.local_rank == 0 and batch_idx % 5==0:
             metrics = compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b)
             wandb.log(metrics, commit=False)
             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
@@ -123,7 +123,7 @@ class Solver:
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
     
-                if self.local_rank == 0:
+                if self.local_rank == 0 and batch_idx % 5==0:
                     wandb.log({"grad_norm": grad_norm.item()})
             else:
                 with torch.no_grad():
@@ -147,7 +147,8 @@ class Solver:
         if self.world_size > 1:
             metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
             dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
-            total_loss = metrics.tolist()
+            total_loss = metrics.item()
+
             
         total_loss /= (batch_idx + 1) * self.world_size
         # Log metrics
@@ -206,7 +207,7 @@ class Solver:
     
             # Save best model
             if self.local_rank == 0:
-                if lda_accuracy < best_loss:
+                if lda_accuracy > best_loss:
                     best_loss = lda_accuracy
                     print('Best val loss found')
                     self.save_checkpoint(epoch, lda_accuracy)
@@ -467,7 +468,7 @@ if __name__ == '__main__':
         'seed': 42,
         'n_classes': 1000,
         'train_val_split': 0.1,
-        'batch_size': 8192,  # Global batch size
+        'batch_size': 1024,  # Global batch size
         'num_workers': 1,  # Adjust based on CPU cores
         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
         'val_dir': '/data/datasets/imagenet_full_size/061417/val',

@@ -1,0 +1,70 @@
+diff --git a/eval.py b/eval.py
+index d4c52df..fa031f6 100644
+--- a/eval.py
++++ b/eval.py
+@@ -57,12 +57,12 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
+         train_ds = TensorDataset(X_train, y_train)
+         val_ds = TensorDataset(X_val, y_val)
+ 
+-        train_loader = DataLoader(train_ds, batch_size=4096, shuffle=True)
+-        val_loader = DataLoader(val_ds, batch_size=4096)
++        train_loader = DataLoader(train_ds, batch_size=1024, shuffle=True)
++        val_loader = DataLoader(val_ds, batch_size=1024)
+ 
+         # Define linear classifier
+         classifier = LinearClassifier(X_train.shape[1], int(y_train.max()) + 1).to(device)
+-        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-2)
++        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3)
+         criterion = nn.CrossEntropyLoss()
+ 
+         # --- Training ---
+diff --git a/train.py b/train.py
+index 032688b..ad68d29 100644
+--- a/train.py
++++ b/train.py
+@@ -83,7 +83,7 @@ class Solver:
+         
+         loss = self.criterion(sigma_w_inv_b)
+     
+-        if self.local_rank == 0 and epoch % 5:
++        if self.local_rank == 0 and batch_idx % 5==0:
+             metrics = compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b)
+             wandb.log(metrics, commit=False)
+             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
+@@ -123,7 +123,7 @@ class Solver:
+                 self.scaler.step(self.optimizer)
+                 self.scaler.update()
+     
+-                if self.local_rank == 0:
++                if self.local_rank == 0 and batch_idx % 5==0:
+                     wandb.log({"grad_norm": grad_norm.item()})
+             else:
+                 with torch.no_grad():
+@@ -147,7 +147,8 @@ class Solver:
+         if self.world_size > 1:
+             metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
+             dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+-            total_loss = metrics.tolist()
++            total_loss = metrics.item()
++
+             
+         total_loss /= (batch_idx + 1) * self.world_size
+         # Log metrics
+@@ -467,7 +468,7 @@ if __name__ == '__main__':
+         'seed': 42,
+         'n_classes': 1000,
+         'train_val_split': 0.1,
+-        'batch_size': 8192,  # Global batch size
++        'batch_size': 1024,  # Global batch size
+         'num_workers': 1,  # Adjust based on CPU cores
+         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
+         'val_dir': '/data/datasets/imagenet_full_size/061417/val',
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 962e84c..2947d07 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250508_005918-wfft4o6b
+\ No newline at end of file
++run-20250508_030256-4gnb8myr
+\ No newline at end of file
