@@ -1,0 +1,125 @@
+diff --git a/lda.py b/lda.py
+index cb779d4..a40b2e2 100644
+--- a/lda.py
++++ b/lda.py
+@@ -38,14 +38,14 @@ def lda(X, y, n_classes, lamb):
+     # Calculate between-class scatter matrix
+     Sb = St - Sw
+     mu = torch.trace(Sw) / D
+-    shrinkage = 0.3
++    shrinkage = 0.9
+     Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
+     
+     
+     #Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+     temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+     
+-    return temp, Sw, Sb
++    return Xc_mean, temp, Sw, Sb
+ 
+ 
+ def lda_loss(evals, n_classes, n_eig=None, margin=None):
+@@ -122,9 +122,9 @@ class LDA(nn.Module):
+ 
+     def forward(self, X, y):
+         # Perform batch-wise LDA (temporary, not global yet)
+-        sigma_w_inv_b, sigma_w, sigma_b = self.lda_layer(X, y)
++        Xc_mean, sigma_w_inv_b, sigma_w, sigma_b = self.lda_layer(X, y)
+ 
+-        return sigma_w_inv_b, sigma_w, sigma_b
++        return Xc_mean, sigma_w_inv_b, sigma_w, sigma_b
+ 
+     def transform(self, X):
+         return X.matmul(self.scalings_)[:, :self.n_components]
+diff --git a/models.py b/models.py
+index 93c8bcf..049c148 100644
+--- a/models.py
++++ b/models.py
+@@ -97,8 +97,8 @@ class ResNet(nn.Module):
+ 
+         if self.lda_args:
+             fea = F.normalize(fea, p=2, dim=1)
+-            sigma_w_inv_b, sigma_w, sigma_b = self.lda(fea, y)
+-            return sigma_w_inv_b, sigma_w, sigma_b
++            xc_mean, sigma_w_inv_b, sigma_w, sigma_b = self.lda(fea, y)
++            return xc_mean, sigma_w_inv_b, sigma_w, sigma_b
+         else:
+             out = self.linear(fea)
+             return out
+diff --git a/train.py b/train.py
+index 45613f5..73e2b1d 100644
+--- a/train.py
++++ b/train.py
+@@ -77,14 +77,14 @@ class Solver:
+ 
+     def handle_lda(self, inputs, targets, epoch, batch_idx):
+         net = self.get_net()
+-        sigma_w_inv_b, sigma_w, sigma_b = net(inputs, targets, epoch)
++        xc_mean, sigma_w_inv_b, sigma_w, sigma_b = net(inputs, targets, epoch)
+     
+     
+         
+         loss = self.criterion(sigma_w_inv_b)
+     
+         if self.local_rank == 0 and batch_idx % 5==0:
+-            metrics = compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b)
++            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b)
+             wandb.log(metrics, commit=False)
+             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
+     
+diff --git a/utils.py b/utils.py
+index 3407b1a..9555327 100644
+--- a/utils.py
++++ b/utils.py
+@@ -1,6 +1,6 @@
+ import torch
+ 
+-def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
++def compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b):
+     """
+     Computes and returns a dictionary of metrics to be logged to wandb.
+ 
+@@ -52,6 +52,18 @@ def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
+     sum_squared_off_diag_w = torch.sum(off_diag_w ** 2).item()
+ 
+ 
++    # L2 norms of class means
++    norms = torch.norm(Xc_mean, dim=1)
++    
++    # Mean and std of norms (do they all live on a sphere?)
++    mean_norm = norms.mean().item()
++    std_norm = norms.std().item()
++    
++    # Check if the class means themselves are centered around the origin
++    mean_of_means = Xc_mean.mean(dim=0)
++    centered = torch.norm(mean_of_means).item()
++
++
+     metrics = {
+         "entropy": entropy,
+         "complex_count":complex_count, 
+@@ -70,7 +82,11 @@ def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
+         "trace_b": trace_b,
+         "trace_w":trace_w,
+         "sum_squared_off_diag_w":sum_squared_off_diag_w,
+-        "sum_squared_off_diag_b":sum_squared_off_diag_b
++        "sum_squared_off_diag_b":sum_squared_off_diag_b,
++        "mean_of_class_means_norms": mean_norm,
++        "std_of_class_mean_norms": std_norm,
++        "distance_of_mean_class_means_origin":centered ,
++        
+     }
+ 
+     return metrics
+diff --git a/wandb/latest-run b/wandb/latest-run
+index eef73ec..43d365d 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250508_113336-rvf41uiw
+\ No newline at end of file
++run-20250508_152100-ox84k6va
+\ No newline at end of file
+diff --git a/wandb/run-20250508_113336-rvf41uiw/run-rvf41uiw.wandb b/wandb/run-20250508_113336-rvf41uiw/run-rvf41uiw.wandb
+index e69de29..0620a6f 100644
+Binary files a/wandb/run-20250508_113336-rvf41uiw/run-rvf41uiw.wandb and b/wandb/run-20250508_113336-rvf41uiw/run-rvf41uiw.wandb differ

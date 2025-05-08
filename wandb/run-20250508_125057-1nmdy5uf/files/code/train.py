@@ -77,14 +77,14 @@ class Solver:
 
     def handle_lda(self, inputs, targets, epoch, batch_idx):
         net = self.get_net()
-        xc_mean, sigma_w_inv_b, sigma_w, sigma_b = net(inputs, targets, epoch)
+        sigma_w_inv_b, sigma_w, sigma_b = net(inputs, targets, epoch)
     
     
         
         loss = self.criterion(sigma_w_inv_b)
     
         if self.local_rank == 0 and batch_idx % 5==0:
-            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b)
+            metrics = compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b)
             wandb.log(metrics, commit=False)
             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
     

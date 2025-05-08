@@ -1,0 +1,25 @@
+diff --git a/lda.py b/lda.py
+index cb779d4..71e1bce 100644
+--- a/lda.py
++++ b/lda.py
+@@ -38,7 +38,7 @@ def lda(X, y, n_classes, lamb):
+     # Calculate between-class scatter matrix
+     Sb = St - Sw
+     mu = torch.trace(Sw) / D
+-    shrinkage = 0.3
++    shrinkage = 0.9
+     Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
+     
+     
+diff --git a/wandb/latest-run b/wandb/latest-run
+index eef73ec..96fd9ee 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250508_113336-rvf41uiw
+\ No newline at end of file
++run-20250508_125057-1nmdy5uf
+\ No newline at end of file
+diff --git a/wandb/run-20250508_113336-rvf41uiw/run-rvf41uiw.wandb b/wandb/run-20250508_113336-rvf41uiw/run-rvf41uiw.wandb
+index e69de29..0620a6f 100644
+Binary files a/wandb/run-20250508_113336-rvf41uiw/run-rvf41uiw.wandb and b/wandb/run-20250508_113336-rvf41uiw/run-rvf41uiw.wandb differ

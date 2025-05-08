@@ -38,14 +38,14 @@ def lda(X, y, n_classes, lamb):
     # Calculate between-class scatter matrix
     Sb = St - Sw
     mu = torch.trace(Sw) / D
-    shrinkage = 0.3
+    shrinkage = 0.9
     Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
     
     
     #Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
     temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
     
-    return temp, Sw, Sb
+    return Xc_mean, temp, Sw, Sb
 
 
 def lda_loss(evals, n_classes, n_eig=None, margin=None):
@@ -122,9 +122,9 @@ class LDA(nn.Module):
 
     def forward(self, X, y):
         # Perform batch-wise LDA (temporary, not global yet)
-        sigma_w_inv_b, sigma_w, sigma_b = self.lda_layer(X, y)
+        Xc_mean, sigma_w_inv_b, sigma_w, sigma_b = self.lda_layer(X, y)
 
-        return sigma_w_inv_b, sigma_w, sigma_b
+        return Xc_mean, sigma_w_inv_b, sigma_w, sigma_b
 
     def transform(self, X):
         return X.matmul(self.scalings_)[:, :self.n_components]

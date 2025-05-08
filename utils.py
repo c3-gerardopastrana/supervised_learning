@@ -1,6 +1,6 @@
 import torch
 
-def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
+def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b):
     """
     Computes and returns a dictionary of metrics to be logged to wandb.
 
@@ -52,6 +52,18 @@ def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
     sum_squared_off_diag_w = torch.sum(off_diag_w ** 2).item()
 
 
+    # L2 norms of class means
+    norms = torch.norm(Xc_mean, dim=1)
+    
+    # Mean and std of norms (do they all live on a sphere?)
+    mean_norm = norms.mean().item()
+    std_norm = norms.std().item()
+    
+    # Check if the class means themselves are centered around the origin
+    mean_of_means = Xc_mean.mean(dim=0)
+    centered = torch.norm(mean_of_means).item()
+
+
     metrics = {
         "entropy": entropy,
         "complex_count":complex_count, 
@@ -70,7 +82,11 @@ def compute_wandb_metrics(sigma_w_inv_b, sigma_w, sigma_b):
         "trace_b": trace_b,
         "trace_w":trace_w,
         "sum_squared_off_diag_w":sum_squared_off_diag_w,
-        "sum_squared_off_diag_b":sum_squared_off_diag_b
+        "sum_squared_off_diag_b":sum_squared_off_diag_b,
+        "mean_of_class_means_norms": mean_norm,
+        "std_of_class_mean_norms": std_norm,
+        "distance_of_mean_class_means_origin":centered ,
+        
     }
 
     return metrics
