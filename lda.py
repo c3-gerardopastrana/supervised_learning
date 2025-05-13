@@ -36,16 +36,29 @@ def lda(X, y, n_classes, lamb):
         Sw = Sw + Xc_bar.t().matmul(Xc_bar) / max(1, Nc - 1) * (Nc / N)
     
     # Calculate between-class scatter matrix
-    Sb = St - Sw
-    mu = torch.trace(Sw) / D
-    shrinkage = 0.9
-    Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
     
+    # Compute overall mean
+    mu = torch.mean(X, dim=0, keepdim=True)  # (1, D)
     
-    #Sw = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
-    temp = torch.linalg.solve(Sw, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb) 
+    # Initialize Sb
+    Sb = torch.zeros((D, D), dtype=X.dtype, device=X.device)
     
-    return Xc_mean, temp, Sw, Sb
+    # Compute Sb directly from class means and counts
+    for c, Nc in zip(labels, counts):
+        mu_c = Xc_mean[int(c), :].unsqueeze(0)  # (1, D)
+        delta = mu_c - mu  # (1, D)
+        Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
+
+    #Sb = St - Sw
+    # mu = torch.trace(Sw) / D
+    # shrinkage = 0.9
+    # Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
+    print("Close?", torch.allclose(Sw + Sb, St.to(torch.float32), atol=1e-3))
+    
+    Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+    temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+    
+    return Xc_mean, temp, Sw, Sb, St
 
 
 def lda_loss(evals, n_classes, n_eig=None, margin=None):
@@ -73,29 +86,34 @@ def lda_loss(evals, n_classes, n_eig=None, margin=None):
     #loss = torch.log(eigvals_norm.max()-eigvals_norm.min())
     return loss
     
-def sina_loss(sigma_w_inv_b):
-    n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
+    mu = xc_mean.mean(dim=0)       # (D,)
+    mean_term = torch.sum(mu ** 2)
+    loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
+    # n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
 
-    max_frobenius_norm = max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
-    max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
+    # max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
+    # max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
+    # trace = torch.trace(sigma_b).abs()
+    # lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
+    # loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
     
-    trace = torch.trace(sigma_w_inv_b).abs()
 
-
-
+    
+    
+    #max_frobenius_norm = torch.norm(sigma_b, p='fro')
+    #trace = torch.trace(sigma_w_inv_b).abs()
     # lambda_target = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
-    
-
     # # dim = sigma_w_inv_b.shape[0]
     # # identity = torch.eye(dim, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
     # # diff = sigma_w_inv_b - lambda_target * identity
     # # loss = torch.norm(diff, p='fro')**2
-
     # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
-    lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
-    penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)  # scale-free, minimal tuning
+    #torch.relu(lambda_target - sigma)#(trace - lambda_target).pow(2)/lambda_target # scale-free, minimal tuning
+    # loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
 
-    loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
+   
     
     # sigma_b_inv_w =  torch.linalg.pinv(sigma_w_inv_b, hermitian=True)
     # min_frobenius_norm = torch.trace(sigma_b_inv_w @ sigma_b_inv_w)
@@ -122,9 +140,9 @@ class LDA(nn.Module):
 
     def forward(self, X, y):
         # Perform batch-wise LDA (temporary, not global yet)
-        Xc_mean, sigma_w_inv_b, sigma_w, sigma_b = self.lda_layer(X, y)
+        Xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = self.lda_layer(X, y)
 
-        return Xc_mean, sigma_w_inv_b, sigma_w, sigma_b
+        return Xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t
 
     def transform(self, X):
         return X.matmul(self.scalings_)[:, :self.n_components]
@@ -287,6 +305,36 @@ def spherical_lda(X, y, n_classes, lamb):
     
     return hasComplexEVal, Xc_mean, evals, evecs, temp
 
+def wasserstein_loss(Xc_mean, St):
+    """
+    Computes the squared 2-Wasserstein distance between 
+    N(mu, St) and N(0, 1/d * I), where d = dim.
+
+    Args:
+        Xc_mean: (n_classes, D) tensor of class means
+        St: (D, D) total scatter matrix
+
+    Returns:
+        Scalar Wasserstein^2 loss
+    """
+    D = St.shape[0]  # dimension
+    device = St.device
+
+    # 1. Mean penalty
+    mu = Xc_mean.mean(dim=0)       # (D,)
+    mean_term = torch.sum(mu ** 2)
+
+    # 2. Trace of covariance
+    trace_term = torch.trace(St)
+
+    # 3. Trace of sqrt of covariance
+    eigvals = torch.linalg.eigvalsh(St.to(torch.float32))              # (D,)
+    sqrt_trace = torch.sum(torch.sqrt(torch.clamp(eigvals, min=1e-6)))  # stability
+
+    # Wasserstein^2
+    wasserstein_sq = mean_term + trace_term - (2 / D**0.5) * sqrt_trace
+
+    return wasserstein_sq
 
 class SphericalLDA(nn.Module):
     def __init__(self, n_classes, lamb=1e-4):
@@ -359,7 +407,7 @@ if __name__ == '__main__':
     n_classes = 3
     n_components = n_classes - 1
     N, D = features.shape  # 150, 4
-    lamb = 0.001
+    lamb = 0.0005
     n_eig = 2
     margin = 0.01
 

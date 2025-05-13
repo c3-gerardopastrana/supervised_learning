@@ -77,14 +77,14 @@ class Solver:
 
     def handle_lda(self, inputs, targets, epoch, batch_idx):
         net = self.get_net()
-        xc_mean, sigma_w_inv_b, sigma_w, sigma_b = net(inputs, targets, epoch)
+        xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
     
     
         
-        loss = self.criterion(sigma_w_inv_b)
+        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
     
         if self.local_rank == 0 and batch_idx % 5==0:
-            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b)
+            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t)
             wandb.log(metrics, commit=False)
             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
     
@@ -187,21 +187,21 @@ class Solver:
     
             # Training phase (we ignore returned values here)
             self.iterate(epoch, 'train')
-            
-            import time
-            start_time = time.time()
-            lda_accuracy = run_linear_probe_on_embeddings(
-                self.dataloaders['complete_train'],
-                self.dataloaders['val'],
-                self.get_net(),
-                use_amp=self.use_amp
-            )
-            
-            # Only rank 0 gets accuracy; others get None
-            if self.local_rank == 0 and lda_accuracy is not None:
-                wandb.log({'lda_accuracy': lda_accuracy})
-                elapsed_time = (time.time() - start_time) / 60  # convert to minutes
-                print(f"Total time: {elapsed_time:.2f} minutes")
+            if epoch % 5 == 0:
+                import time
+                start_time = time.time()
+                lda_accuracy = run_linear_probe_on_embeddings(
+                    self.dataloaders['complete_train'],
+                    self.dataloaders['val'],
+                    self.get_net(),
+                    use_amp=self.use_amp
+                )
+                
+                # Only rank 0 gets accuracy; others get None
+                if self.local_rank == 0 and lda_accuracy is not None:
+                    wandb.log({'lda_accuracy': lda_accuracy})
+                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
+                    print(f"Total time: {elapsed_time:.2f} minutes")
 
 
     
@@ -221,7 +221,7 @@ class Solver:
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ['MASTER_PORT'] = '12353'
     
     # Initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -369,12 +369,37 @@ def train_worker(rank, world_size, config):
     ])
     
     
-    trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
-    valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
-    testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+     # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+
+
+
+    # Load the full datasets
+    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+    
+    # Select 10 class indices (e.g., 10 random or specific ones)
+    selected_classes = list(range(100))  # or any 10 specific indices you want
+    
+    # Map class name to index
+    class_to_idx = trainset_full.class_to_idx
+    idx_to_class = {v: k for k, v in class_to_idx.items()}
+
+    
+    # Create a filter function
+    def filter_by_class(dataset, allowed_classes):
+        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
+        return Subset(dataset, indices)
+    
+    # Create filtered datasets
+    trainset = filter_by_class(trainset_full, selected_classes)
+    valset = filter_by_class(valset_full, selected_classes)
+    testset = filter_by_class(testset_full, selected_classes)
 
     # Create subset
-    transit_size = int(0.1 * len(trainset))
+    transit_size = int(1.0 * len(trainset))
     indices = random.sample(range(len(trainset)), transit_size)
     transit_subset = Subset(trainset, indices)
 
@@ -462,11 +487,11 @@ def train_worker(rank, world_size, config):
 if __name__ == '__main__':
     # Configuration with memory optimizations
     config = {
-        'wandb_project': "DELETEME",
+        'wandb_project': "DELETEME_small",
         'wandb_entity': "gerardo-pastrana-c3-ai",
         'wandb_group': "gapLoss",
         'seed': 42,
-        'n_classes': 1000,
+        'n_classes': 100,
         'train_val_split': 0.1,
         'batch_size': 1024,  # Global batch size
         'num_workers': 1,  # Adjust based on CPU cores
@@ -475,11 +500,11 @@ if __name__ == '__main__':
         'test_dir': '/data/datasets/imagenet_full_size/061417/test',
         'model_path': 'models/deeplda_best.pth',
         'loss': 'LDA',
-        'lamb': 0.0001,
+        'lamb': 0.0002,
         'n_eig': 4,
         'margin': None,
         'epochs': 25,
-        'k_classes': 1000,
+        'k_classes': 100,
         'n_samples': 8,
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory

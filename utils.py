@@ -1,6 +1,6 @@
 import torch
 
-def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b):
+def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t):
     """
     Computes and returns a dictionary of metrics to be logged to wandb.
 
@@ -31,6 +31,12 @@ def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b):
     eigvals_norm = torch.clamp(eigvals_norm, min=eps, max=1.0)
     eigvals_norm /= eigvals_norm.sum()
     entropy = -(eigvals_norm * eigvals_norm.log()).sum().item()
+
+    entropy_w = spectral_entropy(sigma_w)
+    entropy_b = spectral_entropy(sigma_b)
+    entropy_t = spectral_entropy(sigma_t)
+    
+
 
 
 
@@ -63,9 +69,16 @@ def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b):
     mean_of_means = Xc_mean.mean(dim=0)
     centered = torch.norm(mean_of_means).item()
 
+    diff = (sigma_w + sigma_b) - sigma_t.to(torch.float32)
+    max_diff = torch.max(torch.abs(diff)).item()
+
+
 
     metrics = {
         "entropy": entropy,
+        "entropy_w": entropy_w,
+        "entropy_b": entropy_b,
+        "entropy_t": entropy_t,
         "complex_count":complex_count, 
         "max_eigval_norm": max_eigval_norm,
         "min_eigval_norm": min_eigval_norm,
@@ -86,8 +99,15 @@ def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b):
         "mean_of_class_means_norms": mean_norm,
         "std_of_class_mean_norms": std_norm,
         "distance_of_mean_class_means_origin":centered ,
+        "max_diff": max_diff,
         
     }
 
     return metrics
+    
+def spectral_entropy(matrix, eps=1e-10):
+    evals = torch.linalg.eigvalsh(matrix.to(torch.float32))  # real eigenvalues for symmetric/PSD
+    evals = torch.clamp(evals, min=eps)
+    evals_norm = evals / evals.sum()
+    return -(evals_norm * evals_norm.log()).sum().item()
 
