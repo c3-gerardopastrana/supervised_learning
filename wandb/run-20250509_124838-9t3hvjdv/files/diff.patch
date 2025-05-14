@@ -1,0 +1,86 @@
+diff --git a/lda.py b/lda.py
+index a40b2e2..af8f289 100644
+--- a/lda.py
++++ b/lda.py
+@@ -70,32 +70,42 @@ def lda_loss(evals, n_classes, n_eig=None, margin=None):
+     # eps = 1e-10 
+     # eigvals_norm = torch.clamp(eigvals_norm, min=eps)
+     # oss = (eigvals_norm * eigvals_norm.log()).sum()
+-    #loss = torch.log(eigvals_norm.max()-eigvals_norm.min())
++    #loss = torch.lo-wg(eigvals_norm.max()-eigvals_norm.min())
+     return loss
+     
+-def sina_loss(sigma_w_inv_b):
++def sina_loss(sigma_w_inv_b, sigma_w, sigma_b):
+     n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    max_frobenius_norm_b = torch.norm(sigma_b, p='fro')
++    trace_b = torch.trace(sigma_b).abs()
++    max_frobenius_norm_w = torch.norm(sigma_b, p='fro')
++    trace_w = torch.trace(sigma_b).abs()
+ 
+-    max_frobenius_norm = max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
+-    max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
+     
+-    trace = torch.trace(sigma_w_inv_b).abs()
++    lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)  # scale-free, minimal tuning
+ 
++    loss = torch.log(max_frobenius_norm_b) -  torch.log(trace_b) + torch.log(max_frobenius_norm_w)
++
++    # max_frobenius_norm = max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
++    # max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
++    
++    # trace = torch.trace(sigma_w_inv_b).abs()
+ 
+ 
+-    # lambda_target = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++
++    # # lambda_target = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+     
+ 
+-    # # dim = sigma_w_inv_b.shape[0]
+-    # # identity = torch.eye(dim, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+-    # # diff = sigma_w_inv_b - lambda_target * identity
+-    # # loss = torch.norm(diff, p='fro')**2
++    # # # dim = sigma_w_inv_b.shape[0]
++    # # # identity = torch.eye(dim, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    # # # diff = sigma_w_inv_b - lambda_target * identity
++    # # # loss = torch.norm(diff, p='fro')**2
+ 
+-    # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
+-    lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+-    penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)  # scale-free, minimal tuning
++    # # penalty = (trace - lambda_target).pow(2)  # scale-free, minimal tuning
++    # lambda_target = torch.tensor(2**10, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    # penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)  # scale-free, minimal tuning
+ 
+-    loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
++    # loss = torch.log(max_frobenius_norm) -   torch.log(trace) + penalty
+     
+     # sigma_b_inv_w =  torch.linalg.pinv(sigma_w_inv_b, hermitian=True)
+     # min_frobenius_norm = torch.trace(sigma_b_inv_w @ sigma_b_inv_w)
+diff --git a/train.py b/train.py
+index 73e2b1d..954ec97 100644
+--- a/train.py
++++ b/train.py
+@@ -81,7 +81,7 @@ class Solver:
+     
+     
+         
+-        loss = self.criterion(sigma_w_inv_b)
++        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b)
+     
+         if self.local_rank == 0 and batch_idx % 5==0:
+             metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b)
+diff --git a/wandb/latest-run b/wandb/latest-run
+index bc4fb51..99d6bf2 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250508_152349-fdcd1ko3
+\ No newline at end of file
++run-20250509_124838-9t3hvjdv
+\ No newline at end of file
+diff --git a/wandb/run-20250508_152349-fdcd1ko3/run-fdcd1ko3.wandb b/wandb/run-20250508_152349-fdcd1ko3/run-fdcd1ko3.wandb
+index e69de29..77cfd4f 100644
+Binary files a/wandb/run-20250508_152349-fdcd1ko3/run-fdcd1ko3.wandb and b/wandb/run-20250508_152349-fdcd1ko3/run-fdcd1ko3.wandb differ

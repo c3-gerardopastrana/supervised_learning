@@ -78,7 +78,7 @@ class Solver:
     def handle_lda(self, inputs, targets, epoch, batch_idx):
         net = self.get_net()
         xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
-    
+     
     
         
         loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
@@ -221,7 +221,7 @@ class Solver:
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12353'
+    os.environ['MASTER_PORT'] = '12354'
     
     # Initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -503,9 +503,9 @@ if __name__ == '__main__':
         'lamb': 0.0002,
         'n_eig': 4,
         'margin': None,
-        'epochs': 25,
+        'epochs': 50,
         'k_classes': 100,
-        'n_samples': 8,
+        'n_samples': 64,
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
         'use_amp': True,                   # Use automatic mixed precision

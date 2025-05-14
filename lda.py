@@ -53,7 +53,7 @@ def lda(X, y, n_classes, lamb):
     # mu = torch.trace(Sw) / D
     # shrinkage = 0.9
     # Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
-    print("Close?", torch.allclose(Sw + Sb, St.to(torch.float32), atol=1e-3))
+
     
     Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
     temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
@@ -89,15 +89,17 @@ def lda_loss(evals, n_classes, n_eig=None, margin=None):
 def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
     mu = xc_mean.mean(dim=0)       # (D,)
     mean_term = torch.sum(mu ** 2)
-    loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
+    # loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
     # n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
 
     # max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
     # max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
-    # trace = torch.trace(sigma_b).abs()
-    # lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
-    # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
+    # trace = torch.trace(sigma_w_inv_b).abs()
+    # lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    # penalty = (trace - lambda_target).pow(2) / lambda_target
+    # # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
     # loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
+    loss = torch.log(torch.norm(sigma_t, p='fro')) - torch.log(torch.trace(sigma_t)) + mean_term
     
 
     

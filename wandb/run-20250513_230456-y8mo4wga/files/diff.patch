@@ -1,0 +1,80 @@
+diff --git a/lda.py b/lda.py
+index f6cfb13..7d73803 100644
+--- a/lda.py
++++ b/lda.py
+@@ -87,17 +87,18 @@ def lda_loss(evals, n_classes, n_eig=None, margin=None):
+     return loss
+     
+ def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
+-    mu = xc_mean.mean(dim=0)       # (D,)
+-    mean_term = torch.sum(mu ** 2)
+-    loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
++    # mu = xc_mean.mean(dim=0)       # (D,)
++    # mean_term = torch.sum(mu ** 2)
++    # loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
+     # n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+ 
+-    # max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
+-    # max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
+-    # trace = torch.trace(sigma_b).abs()
+-    # lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
++    max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
++    trace = torch.trace(sigma_w_inv_b).abs()
++    lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    penalty = (trace - lambda_target).pow(2) / lambda_target.pow(2)
+     # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
+-    # loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
++    loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
+     
+ 
+     
+diff --git a/train.py b/train.py
+index 3b9890c..5c6a68d 100644
+--- a/train.py
++++ b/train.py
+@@ -78,7 +78,7 @@ class Solver:
+     def handle_lda(self, inputs, targets, epoch, batch_idx):
+         net = self.get_net()
+         xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
+-    
++     
+     
+         
+         loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
+@@ -381,7 +381,7 @@ def train_worker(rank, world_size, config):
+     testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+     
+     # Select 10 class indices (e.g., 10 random or specific ones)
+-    selected_classes = list(range(100))  # or any 10 specific indices you want
++    selected_classes = list(range(10))  # or any 10 specific indices you want
+     
+     # Map class name to index
+     class_to_idx = trainset_full.class_to_idx
+@@ -491,7 +491,7 @@ if __name__ == '__main__':
+         'wandb_entity': "gerardo-pastrana-c3-ai",
+         'wandb_group': "gapLoss",
+         'seed': 42,
+-        'n_classes': 100,
++        'n_classes': 10,
+         'train_val_split': 0.1,
+         'batch_size': 1024,  # Global batch size
+         'num_workers': 1,  # Adjust based on CPU cores
+@@ -504,7 +504,7 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 25,
+-        'k_classes': 100,
++        'k_classes': 10,
+         'n_samples': 8,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 7018e49..e735e7f 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250513_222144-gno15n4a
+\ No newline at end of file
++run-20250513_230456-y8mo4wga
+\ No newline at end of file

@@ -1,0 +1,60 @@
+{
+  "os": "Linux-5.15.146+-x86_64-with-glibc2.31",
+  "python": "CPython 3.11.4",
+  "startedAt": "2025-05-13T15:39:20.920012Z",
+  "program": "/workspace/Lidar/supervised_learning/train.py",
+  "codePath": "train.py",
+  "git": {
+    "remote": "https://github.com/c3-gerardopastrana/supervised_learning.git",
+    "commit": "e1a99dada6189337c90b3dfa959f9edbbe04c883"
+  },
+  "email": "utsavdutta98@gmail.com",
+  "root": "/workspace/Lidar/supervised_learning",
+  "host": "finetuning-80gb-4-5-59d4d9d89f-rtctb",
+  "executable": "/root/.cache/pypoetry/virtualenvs/deeplda-project-lMrMy_DZ-py3.11/bin/python",
+  "codePathLocal": "train.py",
+  "cpu_count": 48,
+  "cpu_count_logical": 96,
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "gpu_count": 4,
+  "disk": {
+    "/": {
+      "total": "3168432029696",
+      "used": "825253027840"
+    }
+  },
+  "memory": {
+    "total": "1437341159424"
+  },
+  "cpu": {
+    "count": 48,
+    "countLogical": 96
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    }
+  ],
+  "cudaVersion": "12.4"
+}

@@ -1,0 +1,96 @@
+diff --git a/eval.py b/eval.py
+index fa031f6..34e85ef 100644
+--- a/eval.py
++++ b/eval.py
+@@ -66,7 +66,7 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
+         criterion = nn.CrossEntropyLoss()
+ 
+         # --- Training ---
+-        epochs = 20
++        epochs = 30
+         for epoch in range(epochs):
+             classifier.train()
+             correct, total = 0, 0
+diff --git a/lda.py b/lda.py
+index f6cfb13..f1823ab 100644
+--- a/lda.py
++++ b/lda.py
+@@ -53,7 +53,7 @@ def lda(X, y, n_classes, lamb):
+     # mu = torch.trace(Sw) / D
+     # shrinkage = 0.9
+     # Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
+-    print("Close?", torch.allclose(Sw + Sb, St.to(torch.float32), atol=1e-3))
++
+     
+     Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+     temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+@@ -87,17 +87,18 @@ def lda_loss(evals, n_classes, n_eig=None, margin=None):
+     return loss
+     
+ def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
+-    mu = xc_mean.mean(dim=0)       # (D,)
+-    mean_term = torch.sum(mu ** 2)
+-    loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
++    # mu = xc_mean.mean(dim=0)       # (D,)
++    # mean_term = torch.sum(mu ** 2)
++    # loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
+     # n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+ 
+-    # max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
+-    # max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
+-    # trace = torch.trace(sigma_b).abs()
+-    # lambda_target = torch.tensor(2**5, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
++    max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
++    trace = torch.trace(sigma_w_inv_b).abs()
++    lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    penalty = (trace - lambda_target).pow(2) / lambda_target
+     # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
+-    # loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
++    loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
+     
+ 
+     
+diff --git a/train.py b/train.py
+index 3b9890c..e17b5cc 100644
+--- a/train.py
++++ b/train.py
+@@ -78,7 +78,7 @@ class Solver:
+     def handle_lda(self, inputs, targets, epoch, batch_idx):
+         net = self.get_net()
+         xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
+-    
++     
+     
+         
+         loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
+@@ -221,7 +221,7 @@ class Solver:
+ 
+ def setup(rank, world_size):
+     os.environ['MASTER_ADDR'] = 'localhost'
+-    os.environ['MASTER_PORT'] = '12353'
++    os.environ['MASTER_PORT'] = '12354'
+     
+     # Initialize the process group
+     dist.init_process_group("nccl", rank=rank, world_size=world_size)
+@@ -503,9 +503,9 @@ if __name__ == '__main__':
+         'lamb': 0.0002,
+         'n_eig': 4,
+         'margin': None,
+-        'epochs': 25,
++        'epochs': 50,
+         'k_classes': 100,
+-        'n_samples': 8,
++        'n_samples': 64,
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+         'use_amp': True,                   # Use automatic mixed precision
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 7018e49..eea8cc3 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250513_222144-gno15n4a
+\ No newline at end of file
++run-20250514_001058-efym6du3
+\ No newline at end of file
