@@ -1,0 +1,210 @@
+diff --git a/lda.py b/lda.py
+index 733c9a1..e52967d 100644
+--- a/lda.py
++++ b/lda.py
+@@ -54,9 +54,10 @@ def lda(X, y, n_classes, lamb):
+     # shrinkage = 0.9
+     # Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
+ 
+-    
++    #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
+     Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+     temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
++    #temp = (temp + temp.T) / 2
+     
+     return Xc_mean, temp, Sw, Sb, St
+ 
+@@ -90,17 +91,30 @@ def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
+     mu = xc_mean.mean(dim=0)       # (D,)
+     mean_term = torch.sum(mu ** 2)
+     # loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
+-    # n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++
++    max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
++    max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
++    trace = torch.trace(sigma_w_inv_b).abs()
++    lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    penalty = (trace - lambda_target).pow(2) / n
++    # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
++    loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
+ 
+-    # max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
+-    # max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
+-    # trace = torch.trace(sigma_w_inv_b).abs()
+-    # lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+-    # penalty = (trace - lambda_target).pow(2) / lambda_target
+-    # # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
+-    # loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
+-    loss = torch.log(torch.norm(sigma_t, p='fro')) - torch.log(torch.trace(sigma_t)) + mean_term
++    # trace_w = torch.trace(sigma_w)
++    # frob_norm_sq_w = torch.sum(sigma_w ** 2)
++    # d = sigma_w.shape[0]
++    
+     
++    # w_sphericity = frob_norm_sq_w - (trace_w ** 2) / d
++
++    # b_sphericity = torch.log(torch.norm(sigma_b, p='fro')) - torch.log(torch.trace(sigma_b))
++    # loss = triangle_loss(xc_mean, sigma_b, sigma_w, epsilon = 0.15)
++    #mean_term + (1-torch.trace(sigma_b + sigma_w)) + 10 * ((sigma_w.sum() - torch.diagonal(sigma_w).sum()))
++    #loss = wasserstein_loss(xc_mean, sigma_t) # + w_sphericity
++    # + torch.norm(sigma_w, p='fro') ** 2 / n
++    #triangle_loss(Xc_mean, Sb, Sw, epsilon = 0.15)
++    #loss = mean_term - torch.trace(sigma_w + sigma_b) + w_sphericity
+ 
+     
+     
+@@ -306,7 +320,62 @@ def spherical_lda(X, y, n_classes, lamb):
+         evecs = torch.zeros((D, 0), dtype=temp.dtype, device=temp.device)
+     
+     return hasComplexEVal, Xc_mean, evals, evecs, temp
++    
++def triangle_loss(Xc_mean, Sb, Sw, epsilon = 0.15):
++    """
++    Wasserstein proxy loss:
++    Penalizes deviation of class means from 0 and total scatter matrix from (1/n) * I.
++
++    Args:
++        Xc_mean: (n_classes, D) tensor of class means
++        St: (D, D) total scatter matrix
++        n_classes: int, number of classes (used to scale identity)
++
++    Returns:
++        Scalar proxy Wasserstein^2 loss
++    """
++    D = Sw.shape[0]
++    device = Sw.device
++
++    # 1. Mean penalty: encourage mean of class means to be near 0
++    mu = Xc_mean.mean(dim=0)  # (D,)
++    mean_term = torch.sum(mu ** 2)
++
++    # 2. Frobenius norm penalty: encourage St ≈ (1/n) * I
++    target = (1.0 / D) * torch.eye(D, device=device)
++    frob_term_b = torch.norm(Sb - epsilon * target, p='fro') ** 0.1
++    frob_term_w = torch.norm(Sw - (1-epsilon) * target, p='fro') **0.1
++    
++
++    return mean_term + frob_term_b + frob_term_w
++    
++def wasserstein_proxy_loss(Xc_mean, St):
++    """
++    Wasserstein proxy loss:
++    Penalizes deviation of class means from 0 and total scatter matrix from (1/n) * I.
++
++    Args:
++        Xc_mean: (n_classes, D) tensor of class means
++        St: (D, D) total scatter matrix
++        n_classes: int, number of classes (used to scale identity)
++
++    Returns:
++        Scalar proxy Wasserstein^2 loss
++    """
++    D = St.shape[0]
++    device = St.device
++
++    # 1. Mean penalty: encourage mean of class means to be near 0
++    mu = Xc_mean.mean(dim=0)  # (D,)
++    mean_term = torch.sum(mu ** 2)
++
++    # 2. Frobenius norm penalty: encourage St ≈ (1/n) * I
++    target = (1.0 / D) * torch.eye(D, device=device)
++    frob_term = torch.norm(St - target, p='fro') ** 2
+ 
++    return mean_term
++    #return mean_term + frob_term
++    
+ def wasserstein_loss(Xc_mean, St):
+     """
+     Computes the squared 2-Wasserstein distance between 
+@@ -319,25 +388,60 @@ def wasserstein_loss(Xc_mean, St):
+     Returns:
+         Scalar Wasserstein^2 loss
+     """
+-    D = St.shape[0]  # dimension
++    D = St.shape[0]
+     device = St.device
+ 
+     # 1. Mean penalty
+-    mu = Xc_mean.mean(dim=0)       # (D,)
++    mu = Xc_mean.mean(dim=0)
+     mean_term = torch.sum(mu ** 2)
+ 
+     # 2. Trace of covariance
+     trace_term = torch.trace(St)
+ 
+-    # 3. Trace of sqrt of covariance
+-    eigvals = torch.linalg.eigvalsh(St.to(torch.float32))              # (D,)
+-    sqrt_trace = torch.sum(torch.sqrt(torch.clamp(eigvals, min=1e-6)))  # stability
++    # 3. Approximate trace of sqrt of covariance using partial eigendecomposition
++    
++    
++    with torch.cuda.amp.autocast(enabled=False):
++        k = 100 #D // 3  # <= D // 3 required by torch.lobpcg
++        St_fp32 = St.to(dtype=torch.float32)
++        eps = 1e-4
++        St_fp32 = St.to(dtype=torch.float32) + eps * torch.eye(St.shape[0], device=St.device)
++        init = torch.randn(St_fp32.shape[0], k, device=St.device, dtype=torch.float32)
++        eigvals, _ = torch.lobpcg(St_fp32, k=k, X=init, niter=100, largest=True, method="ortho")
++        sqrt_trace = torch.sum(torch.sqrt(torch.clamp(eigvals, min=1e-6)))
+ 
+     # Wasserstein^2
+     wasserstein_sq = mean_term + trace_term - (2 / D**0.5) * sqrt_trace
+ 
+     return wasserstein_sq
+ 
++    
++def kl_divergence_loss(Xc_mean, St):
++    """
++    Computes the KL divergence (up to constants) between
++    N(mu, St) and N(0, 1/D * I), where D = dim.
++
++    Args:
++        Xc_mean: (n_classes, D) tensor of class means
++        St: (D, D) total scatter (covariance) matrix
++    Returns:
++        Scalar KL loss (up to constants)
++    """
++    D = St.shape[0]
++    n = D  # target is N(0, 1/D * I)
++
++    mu = Xc_mean.mean(dim=0)  # (D,)
++    mean_term = n * torch.sum(mu ** 2)
++
++    trace_term = n * torch.trace(St)
++
++    # Cholesky-based log-determinant
++    chol = torch.linalg.cholesky(St)
++    log_det_term = -2 * torch.log(chol.diagonal()).sum()
++
++    kl_loss = 0.5 * (trace_term + mean_term + log_det_term)
++    return kl_loss
++
+ class SphericalLDA(nn.Module):
+     def __init__(self, n_classes, lamb=1e-4):
+         super(SphericalLDA, self).__init__()
+diff --git a/train.py b/train.py
+index e17b5cc..2a39500 100644
+--- a/train.py
++++ b/train.py
+@@ -221,7 +221,7 @@ class Solver:
+ 
+ def setup(rank, world_size):
+     os.environ['MASTER_ADDR'] = 'localhost'
+-    os.environ['MASTER_PORT'] = '12354'
++    os.environ['MASTER_PORT'] = '12355'
+     
+     # Initialize the process group
+     dist.init_process_group("nccl", rank=rank, world_size=world_size)
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 724b935..3498ec7 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250514_023337-no5goqf3
+\ No newline at end of file
++run-20250516_181118-id7738pw
+\ No newline at end of file
+diff --git a/wandb/run-20250514_023337-no5goqf3/run-no5goqf3.wandb b/wandb/run-20250514_023337-no5goqf3/run-no5goqf3.wandb
+index e54b50a..c4a98cd 100644
+Binary files a/wandb/run-20250514_023337-no5goqf3/run-no5goqf3.wandb and b/wandb/run-20250514_023337-no5goqf3/run-no5goqf3.wandb differ

@@ -50,13 +50,15 @@ def lda(X, y, n_classes, lamb):
         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
 
     #Sb = St - Sw
-    # mu = torch.trace(Sw) / D
-    # shrinkage = 0.9
-    # Sw = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
-
+    mu = torch.trace(Sw) / D # 1.0 / D #
+    shrinkage = 0.1 # 1- torch.trace(Sw) 
+    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
     
-    Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+    # add mean? add something to Sw_reg?
+    #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
+    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
     temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+    #temp = (temp + temp.T) / 2
     
     return Xc_mean, temp, Sw, Sb, St
 
@@ -90,17 +92,30 @@ def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
     mu = xc_mean.mean(dim=0)       # (D,)
     mean_term = torch.sum(mu ** 2)
     # loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
-    # n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
 
-    # max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
-    # max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
-    # trace = torch.trace(sigma_w_inv_b).abs()
-    # lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
-    # penalty = (trace - lambda_target).pow(2) / lambda_target
-    # # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
-    # loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
-    loss = torch.log(torch.norm(sigma_t, p='fro')) - torch.log(torch.trace(sigma_t)) + mean_term
+    max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
+    max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
+    trace = torch.trace(sigma_w_inv_b).abs()
+    lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    penalty = (trace - lambda_target).pow(2) / n
+    # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
+    loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
+
+    # trace_w = torch.trace(sigma_w)
+    # frob_norm_sq_w = torch.sum(sigma_w ** 2)
+    # d = sigma_w.shape[0]
     
+    
+    # w_sphericity = frob_norm_sq_w - (trace_w ** 2) / d
+
+    # b_sphericity = torch.log(torch.norm(sigma_b, p='fro')) - torch.log(torch.trace(sigma_b))
+    # loss = triangle_loss(xc_mean, sigma_b, sigma_w, epsilon = 0.15)
+    #mean_term + (1-torch.trace(sigma_b + sigma_w)) + 10 * ((sigma_w.sum() - torch.diagonal(sigma_w).sum()))
+    #loss = wasserstein_loss(xc_mean, sigma_t) # + w_sphericity
+    # + torch.norm(sigma_w, p='fro') ** 2 / n
+    #triangle_loss(Xc_mean, Sb, Sw, epsilon = 0.15)
+    #loss = mean_term - torch.trace(sigma_w + sigma_b) + w_sphericity
 
     
     
@@ -306,7 +321,62 @@ def spherical_lda(X, y, n_classes, lamb):
         evecs = torch.zeros((D, 0), dtype=temp.dtype, device=temp.device)
     
     return hasComplexEVal, Xc_mean, evals, evecs, temp
+    
+def triangle_loss(Xc_mean, Sb, Sw, epsilon = 0.15):
+    """
+    Wasserstein proxy loss:
+    Penalizes deviation of class means from 0 and total scatter matrix from (1/n) * I.
 
+    Args:
+        Xc_mean: (n_classes, D) tensor of class means
+        St: (D, D) total scatter matrix
+        n_classes: int, number of classes (used to scale identity)
+
+    Returns:
+        Scalar proxy Wasserstein^2 loss
+    """
+    D = Sw.shape[0]
+    device = Sw.device
+
+    # 1. Mean penalty: encourage mean of class means to be near 0
+    mu = Xc_mean.mean(dim=0)  # (D,)
+    mean_term = torch.sum(mu ** 2)
+
+    # 2. Frobenius norm penalty: encourage St ≈ (1/n) * I
+    target = (1.0 / D) * torch.eye(D, device=device)
+    frob_term_b = torch.norm(Sb - epsilon * target, p='fro') ** 0.1
+    frob_term_w = torch.norm(Sw - (1-epsilon) * target, p='fro') **0.1
+    
+
+    return mean_term + frob_term_b + frob_term_w
+    
+def wasserstein_proxy_loss(Xc_mean, St):
+    """
+    Wasserstein proxy loss:
+    Penalizes deviation of class means from 0 and total scatter matrix from (1/n) * I.
+
+    Args:
+        Xc_mean: (n_classes, D) tensor of class means
+        St: (D, D) total scatter matrix
+        n_classes: int, number of classes (used to scale identity)
+
+    Returns:
+        Scalar proxy Wasserstein^2 loss
+    """
+    D = St.shape[0]
+    device = St.device
+
+    # 1. Mean penalty: encourage mean of class means to be near 0
+    mu = Xc_mean.mean(dim=0)  # (D,)
+    mean_term = torch.sum(mu ** 2)
+
+    # 2. Frobenius norm penalty: encourage St ≈ (1/n) * I
+    target = (1.0 / D) * torch.eye(D, device=device)
+    frob_term = torch.norm(St - target, p='fro') ** 2
+
+    return mean_term
+    #return mean_term + frob_term
+    
 def wasserstein_loss(Xc_mean, St):
     """
     Computes the squared 2-Wasserstein distance between 
@@ -319,24 +389,59 @@ def wasserstein_loss(Xc_mean, St):
     Returns:
         Scalar Wasserstein^2 loss
     """
-    D = St.shape[0]  # dimension
+    D = St.shape[0]
     device = St.device
 
     # 1. Mean penalty
-    mu = Xc_mean.mean(dim=0)       # (D,)
+    mu = Xc_mean.mean(dim=0)
     mean_term = torch.sum(mu ** 2)
 
     # 2. Trace of covariance
     trace_term = torch.trace(St)
 
-    # 3. Trace of sqrt of covariance
-    eigvals = torch.linalg.eigvalsh(St.to(torch.float32))              # (D,)
-    sqrt_trace = torch.sum(torch.sqrt(torch.clamp(eigvals, min=1e-6)))  # stability
+    # 3. Approximate trace of sqrt of covariance using partial eigendecomposition
+    
+    
+    with torch.cuda.amp.autocast(enabled=False):
+        k = 100 #D // 3  # <= D // 3 required by torch.lobpcg
+        St_fp32 = St.to(dtype=torch.float32)
+        eps = 1e-4
+        St_fp32 = St.to(dtype=torch.float32) + eps * torch.eye(St.shape[0], device=St.device)
+        init = torch.randn(St_fp32.shape[0], k, device=St.device, dtype=torch.float32)
+        eigvals, _ = torch.lobpcg(St_fp32, k=k, X=init, niter=100, largest=True, method="ortho")
+        sqrt_trace = torch.sum(torch.sqrt(torch.clamp(eigvals, min=1e-6)))
 
     # Wasserstein^2
     wasserstein_sq = mean_term + trace_term - (2 / D**0.5) * sqrt_trace
 
     return wasserstein_sq
+
+    
+def kl_divergence_loss(Xc_mean, St):
+    """
+    Computes the KL divergence (up to constants) between
+    N(mu, St) and N(0, 1/D * I), where D = dim.
+
+    Args:
+        Xc_mean: (n_classes, D) tensor of class means
+        St: (D, D) total scatter (covariance) matrix
+    Returns:
+        Scalar KL loss (up to constants)
+    """
+    D = St.shape[0]
+    n = D  # target is N(0, 1/D * I)
+
+    mu = Xc_mean.mean(dim=0)  # (D,)
+    mean_term = n * torch.sum(mu ** 2)
+
+    trace_term = n * torch.trace(St)
+
+    # Cholesky-based log-determinant
+    chol = torch.linalg.cholesky(St)
+    log_det_term = -2 * torch.log(chol.diagonal()).sum()
+
+    kl_loss = 0.5 * (trace_term + mean_term + log_det_term)
+    return kl_loss
 
 class SphericalLDA(nn.Module):
     def __init__(self, n_classes, lamb=1e-4):
