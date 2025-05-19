@@ -369,37 +369,37 @@ def train_worker(rank, world_size, config):
     ])
     
     
-    trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
-    valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
-    testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+     # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
 
 
 
-    # # Load the full datasets
-    # trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
-    # valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
-    # testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+    # Load the full datasets
+    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
     
-    # # Select 10 class indices (e.g., 10 random or specific ones)
-    # selected_classes = list(range(100))  # or any 10 specific indices you want
+    # Select 10 class indices (e.g., 10 random or specific ones)
+    selected_classes = list(range(100))  # or any 10 specific indices you want
     
-    # # Map class name to index
-    # class_to_idx = trainset_full.class_to_idx
-    # idx_to_class = {v: k for k, v in class_to_idx.items()}
+    # Map class name to index
+    class_to_idx = trainset_full.class_to_idx
+    idx_to_class = {v: k for k, v in class_to_idx.items()}
 
     
-    # # Create a filter function
-    # def filter_by_class(dataset, allowed_classes):
-    #     indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
-    #     return Subset(dataset, indices)
+    # Create a filter function
+    def filter_by_class(dataset, allowed_classes):
+        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
+        return Subset(dataset, indices)
     
-    # # Create filtered datasets
-    # trainset = filter_by_class(trainset_full, selected_classes)
-    # valset = filter_by_class(valset_full, selected_classes)
-    # testset = filter_by_class(testset_full, selected_classes)
+    # Create filtered datasets
+    trainset = filter_by_class(trainset_full, selected_classes)
+    valset = filter_by_class(valset_full, selected_classes)
+    testset = filter_by_class(testset_full, selected_classes)
 
     # Create subset
-    transit_size = int(0.5 * len(trainset))
+    transit_size = int(1.0 * len(trainset))
     indices = random.sample(range(len(trainset)), transit_size)
     transit_subset = Subset(trainset, indices)
 
@@ -487,11 +487,11 @@ def train_worker(rank, world_size, config):
 if __name__ == '__main__':
     # Configuration with memory optimizations
     config = {
-        'wandb_project': "DELETEME_medium",
+        'wandb_project': "DELETEME_small",
         'wandb_entity': "gerardo-pastrana-c3-ai",
         'wandb_group': "gapLoss",
         'seed': 42,
-        'n_classes': 1000,
+        'n_classes': 100,
         'train_val_split': 0.1,
         'batch_size': 1024,  # Global batch size
         'num_workers': 1,  # Adjust based on CPU cores
@@ -503,8 +503,8 @@ if __name__ == '__main__':
         'lamb': 0.0002,
         'n_eig': 4,
         'margin': None,
-        'epochs': 100,
-        'k_classes': 160,
+        'epochs': 50,
+        'k_classes': 16,
         'n_samples': 64, #32
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory

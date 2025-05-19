@@ -62,11 +62,11 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
 
         # Define linear classifier
         classifier = LinearClassifier(X_train.shape[1], int(y_train.max()) + 1).to(device)
-        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-1)
         criterion = nn.CrossEntropyLoss()
 
         # --- Training ---
-        epochs = 30
+        epochs = 10
         for epoch in range(epochs):
             classifier.train()
             correct, total = 0, 0

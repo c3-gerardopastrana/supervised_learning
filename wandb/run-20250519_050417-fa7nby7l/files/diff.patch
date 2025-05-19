@@ -1,0 +1,53 @@
+diff --git a/lda.py b/lda.py
+index 93316df..84b1afa 100644
+--- a/lda.py
++++ b/lda.py
+@@ -50,14 +50,31 @@ def lda(X, y, n_classes, lamb):
+         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
+ 
+     #Sb = St - Sw
+-    mu = torch.trace(Sw) / D # 1.0 / D #
+-    shrinkage = 0.1 # 1- torch.trace(Sw) 
+-    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++    # mu = torch.trace(Sw) / D # 1.0 / D #
++    # shrinkage = 0.1 # 1- torch.trace(Sw) 
++    # Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+     
+     # add mean? add something to Sw_reg?
+     #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
+-    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+-    temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
++    # Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++    # Sb_reg = Sb + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb * 0.1
++    epsilon = 0.1  # adjust as needed
++    tau = torch.trace(St) / D  # or set to 1.0 / D for unit norm
++    
++    # Total trace
++    tr_Sw = torch.trace(Sw)
++    tr_Sb = torch.trace(Sb)
++    tr_St = tr_Sw + tr_Sb
++    alpha_w = tr_Sw / tr_St
++    alpha_b = tr_Sb / tr_St
++    
++    eye = torch.eye(D, dtype=X.dtype, device=X.device)
++    
++    Sw_reg = (1 - epsilon) * Sw + epsilon * alpha_w * tau * eye
++    Sb_reg = (1 - epsilon) * Sb + epsilon * alpha_b * tau * eye
++
++    
++    temp = torch.linalg.solve(Sw_reg, Sb_reg) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+     #temp = (temp + temp.T) / 2
+     
+     return Xc_mean, temp, Sw, Sb, St
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 69bd6ff..aaa8180 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250518_202241-r3faoyl2
+\ No newline at end of file
++run-20250519_050417-fa7nby7l
+\ No newline at end of file
+diff --git a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb
+index eb78a2b..fb7641a 100644
+Binary files a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb and b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb differ

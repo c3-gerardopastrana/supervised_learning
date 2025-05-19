@@ -50,15 +50,14 @@ def lda(X, y, n_classes, lamb):
         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
 
     #Sb = St - Sw
-    mu = torch.trace(Sw) / D # 1.0 / D #
-    shrinkage = 0.1 # 1- torch.trace(Sw) 
-    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
-    
+    # mu = torch.trace(Sw) / D # 1.0 / D #
+    # shrinkage = 0.01 # 1- torch.trace(Sw) 
+    # Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
     # add mean? add something to Sw_reg?
     #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
-    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+    Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
     temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
-    #temp = (temp + temp.T) / 2
+    temp = (temp + temp.T) / 2
     
     return Xc_mean, temp, Sw, Sb, St
 
