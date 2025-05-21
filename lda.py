@@ -96,10 +96,10 @@ def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
     max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
     max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
     trace = torch.trace(sigma_w_inv_b).abs()
-    lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    lambda_target = torch.tensor(2**7, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
     penalty = (trace - lambda_target).pow(2) / n
     # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
-    loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
+    loss = 1/10 * torch.log(max_frobenius_norm) -  torch.log(trace) # + penalty
 
     # trace_w = torch.trace(sigma_w)
     # frob_norm_sq_w = torch.sum(sigma_w ** 2)

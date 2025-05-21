@@ -4,6 +4,13 @@ import torch.nn.functional as F
 from lda import LDA, lda_loss, sina_loss, SphericalLDA
 from torch.utils.checkpoint import checkpoint, checkpoint_sequential
 
+
+class L2Norm(nn.Module):
+    def forward(self, x):
+        return F.normalize(x, p=2, dim=1)
+        
+
+
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -57,6 +64,11 @@ class ResNet(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.linear = nn.Linear(512 * block.expansion, num_classes)
 
+   
+        self.feat_dim = 128
+        self.use_bn = False
+        self.projection_head = self._make_projector(512 * block.expansion, self.feat_dim)
+        
         if self.lda_args:
             self.lda = LDA(num_classes, lda_args['lamb'])
 
@@ -67,6 +79,17 @@ class ResNet(nn.Module):
             layers.append(block(self.in_planes, planes, stride, use_checkpoint=self.use_checkpoint))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
+    
+    def _make_projector(self, in_dim, out_dim):
+        hidden_dim = 4096
+        return nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, out_dim),  # No BatchNorm here (as in BYOL)
+            L2Norm()
+        )
+
 
     def _forward_impl(self, x):
         def first_part_fn(x):
@@ -96,7 +119,7 @@ class ResNet(nn.Module):
         fea = self._forward_impl(x)
 
         if self.lda_args:
-            fea = F.normalize(fea, p=2, dim=1)
+            fea = fea = self.projection_head(fea) #F.normalize(fea, p=2, dim=1) #fea = self.projection_head(fea)
             xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = self.lda(fea, y)
             return xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t
         else:

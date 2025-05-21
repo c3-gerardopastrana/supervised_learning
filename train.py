@@ -399,7 +399,7 @@ def train_worker(rank, world_size, config):
     # testset = filter_by_class(testset_full, selected_classes)
 
     # Create subset
-    transit_size = int(0.5 * len(trainset))
+    transit_size = int(0.1 * len(trainset))
     indices = random.sample(range(len(trainset)), transit_size)
     transit_subset = Subset(trainset, indices)
 
@@ -487,13 +487,13 @@ def train_worker(rank, world_size, config):
 if __name__ == '__main__':
     # Configuration with memory optimizations
     config = {
-        'wandb_project': "DELETEME_medium",
+        'wandb_project': "DELETEME2",
         'wandb_entity': "gerardo-pastrana-c3-ai",
         'wandb_group': "gapLoss",
         'seed': 42,
         'n_classes': 1000,
         'train_val_split': 0.1,
-        'batch_size': 1024,  # Global batch size
+        'batch_size': 4096,  # Global batch size
         'num_workers': 1,  # Adjust based on CPU cores
         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
         'val_dir': '/data/datasets/imagenet_full_size/061417/val',
@@ -504,7 +504,7 @@ if __name__ == '__main__':
         'n_eig': 4,
         'margin': None,
         'epochs': 100,
-        'k_classes': 160,
+        'k_classes': 128,
         'n_samples': 64, #32
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory

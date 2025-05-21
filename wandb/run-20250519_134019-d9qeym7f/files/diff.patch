@@ -1,0 +1,22 @@
+diff --git a/train.py b/train.py
+index 4306aef..53c3596 100644
+--- a/train.py
++++ b/train.py
+@@ -493,7 +493,7 @@ if __name__ == '__main__':
+         'seed': 42,
+         'n_classes': 1000,
+         'train_val_split': 0.1,
+-        'batch_size': 1024,  # Global batch size
++        'batch_size': 4096,  # Global batch size
+         'num_workers': 1,  # Adjust based on CPU cores
+         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
+         'val_dir': '/data/datasets/imagenet_full_size/061417/val',
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 49bc34b..f41c5e7 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250519_051450-tfwo349y
+\ No newline at end of file
++run-20250519_134019-d9qeym7f
+\ No newline at end of file

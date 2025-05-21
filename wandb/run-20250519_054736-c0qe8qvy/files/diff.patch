@@ -1,0 +1,4071 @@
+diff --git a/eval.py b/eval.py
+index 34e85ef..1aeadd0 100644
+--- a/eval.py
++++ b/eval.py
+@@ -62,11 +62,11 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
+ 
+         # Define linear classifier
+         classifier = LinearClassifier(X_train.shape[1], int(y_train.max()) + 1).to(device)
+-        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3)
++        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-1)
+         criterion = nn.CrossEntropyLoss()
+ 
+         # --- Training ---
+-        epochs = 30
++        epochs = 10
+         for epoch in range(epochs):
+             classifier.train()
+             correct, total = 0, 0
+diff --git a/lda.py b/lda.py
+index 93316df..09e8b24 100644
+--- a/lda.py
++++ b/lda.py
+@@ -50,15 +50,14 @@ def lda(X, y, n_classes, lamb):
+         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
+ 
+     #Sb = St - Sw
+-    mu = torch.trace(Sw) / D # 1.0 / D #
+-    shrinkage = 0.1 # 1- torch.trace(Sw) 
+-    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+-    
++    # mu = torch.trace(Sw) / D # 1.0 / D #
++    # shrinkage = 0.01 # 1- torch.trace(Sw) 
++    # Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu
+     # add mean? add something to Sw_reg?
+     #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
+-    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++    Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+     temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+-    #temp = (temp + temp.T) / 2
++    temp = (temp + temp.T) / 2
+     
+     return Xc_mean, temp, Sw, Sb, St
+ 
+diff --git a/train.py b/train.py
+index f674700..4306aef 100644
+--- a/train.py
++++ b/train.py
+@@ -369,37 +369,37 @@ def train_worker(rank, world_size, config):
+     ])
+     
+     
+-     # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+-    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+-    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+ 
+ 
+ 
+-    # Load the full datasets
+-    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
+-    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
+-    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    # # Load the full datasets
++    # trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    # valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    # testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
+     
+-    # Select 10 class indices (e.g., 10 random or specific ones)
+-    selected_classes = list(range(100))  # or any 10 specific indices you want
++    # # Select 10 class indices (e.g., 10 random or specific ones)
++    # selected_classes = list(range(100))  # or any 10 specific indices you want
+     
+-    # Map class name to index
+-    class_to_idx = trainset_full.class_to_idx
+-    idx_to_class = {v: k for k, v in class_to_idx.items()}
++    # # Map class name to index
++    # class_to_idx = trainset_full.class_to_idx
++    # idx_to_class = {v: k for k, v in class_to_idx.items()}
+ 
+     
+-    # Create a filter function
+-    def filter_by_class(dataset, allowed_classes):
+-        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
+-        return Subset(dataset, indices)
++    # # Create a filter function
++    # def filter_by_class(dataset, allowed_classes):
++    #     indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
++    #     return Subset(dataset, indices)
+     
+-    # Create filtered datasets
+-    trainset = filter_by_class(trainset_full, selected_classes)
+-    valset = filter_by_class(valset_full, selected_classes)
+-    testset = filter_by_class(testset_full, selected_classes)
++    # # Create filtered datasets
++    # trainset = filter_by_class(trainset_full, selected_classes)
++    # valset = filter_by_class(valset_full, selected_classes)
++    # testset = filter_by_class(testset_full, selected_classes)
+ 
+     # Create subset
+-    transit_size = int(1.0 * len(trainset))
++    transit_size = int(0.5 * len(trainset))
+     indices = random.sample(range(len(trainset)), transit_size)
+     transit_subset = Subset(trainset, indices)
+ 
+@@ -487,11 +487,11 @@ def train_worker(rank, world_size, config):
+ if __name__ == '__main__':
+     # Configuration with memory optimizations
+     config = {
+-        'wandb_project': "DELETEME_small",
++        'wandb_project': "DELETEME_medium",
+         'wandb_entity': "gerardo-pastrana-c3-ai",
+         'wandb_group': "gapLoss",
+         'seed': 42,
+-        'n_classes': 100,
++        'n_classes': 1000,
+         'train_val_split': 0.1,
+         'batch_size': 1024,  # Global batch size
+         'num_workers': 1,  # Adjust based on CPU cores
+@@ -503,8 +503,8 @@ if __name__ == '__main__':
+         'lamb': 0.0002,
+         'n_eig': 4,
+         'margin': None,
+-        'epochs': 50,
+-        'k_classes': 100,
++        'epochs': 100,
++        'k_classes': 160,
+         'n_samples': 64, #32
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 69bd6ff..e425e81 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250518_202241-r3faoyl2
+\ No newline at end of file
++run-20250519_054736-c0qe8qvy
+\ No newline at end of file
+diff --git a/wandb/run-20250518_202241-r3faoyl2/files/config.yaml b/wandb/run-20250518_202241-r3faoyl2/files/config.yaml
+new file mode 100644
+index 0000000..eca0d37
+--- /dev/null
++++ b/wandb/run-20250518_202241-r3faoyl2/files/config.yaml
+@@ -0,0 +1,80 @@
++_wandb:
++    value:
++        cli_version: 0.19.9
++        code_path: code/train.py
++        m: []
++        python_version: 3.11.4
++        t:
++            "1":
++                - 1
++                - 5
++                - 41
++                - 53
++                - 55
++            "2":
++                - 1
++                - 5
++                - 41
++                - 53
++                - 55
++            "3":
++                - 16
++                - 23
++                - 55
++            "4": 3.11.4
++            "5": 0.19.9
++            "8":
++                - 5
++                - 9
++            "12": 0.19.9
++            "13": linux-x86_64
++base_batch_size:
++    value: 128
++base_lr:
++    value: 0.001
++batch_size:
++    value: 1024
++cuda_visible_devices:
++    value: ""
++epochs:
++    value: 50
++gradient_accumulation_steps:
++    value: 1
++k_classes:
++    value: 100
++lamb:
++    value: 0.0002
++loss:
++    value: LDA
++margin:
++    value: null
++model_path:
++    value: models/deeplda_best.pth
++n_classes:
++    value: 100
++n_eig:
++    value: 4
++n_samples:
++    value: 64
++num_workers:
++    value: 1
++seed:
++    value: 42
++test_dir:
++    value: /data/datasets/imagenet_full_size/061417/test
++train_dir:
++    value: /data/datasets/imagenet_full_size/061417/train
++train_val_split:
++    value: 0.1
++use_amp:
++    value: true
++use_checkpointing:
++    value: true
++val_dir:
++    value: /data/datasets/imagenet_full_size/061417/val
++wandb_entity:
++    value: gerardo-pastrana-c3-ai
++wandb_group:
++    value: gapLoss
++wandb_project:
++    value: DELETEME_small
+diff --git a/wandb/run-20250518_202241-r3faoyl2/files/wandb-summary.json b/wandb/run-20250518_202241-r3faoyl2/files/wandb-summary.json
+new file mode 100644
+index 0000000..37d69cd
+--- /dev/null
++++ b/wandb/run-20250518_202241-r3faoyl2/files/wandb-summary.json
+@@ -0,0 +1 @@
++{"distance_of_mean_class_means_origin":0.34075090289115906,"sum_squared_off_diag":25.05698013305664,"epoch":49,"diag_var_w":0.009067198261618614,"entropy":4.280120849609375,"entropy_b":3.7781808376312256,"_wandb":{"runtime":12455},"std_of_class_mean_norms":0.05536819249391556,"grad_norm":123.9398193359375,"lda_accuracy":31.580000000000002,"mean_of_class_means_norms":0.47304126620292664,"loss":97.24724578857422,"_timestamp":1.7476122165282364e+09,"trace_w":0.7856335639953613,"sum_squared_off_diag_w":0.0031404122710227966,"diag_var_b":0.009067198261618614,"_step":109,"condition_sigma":516533,"trace_b":0.1106729507446289,"_runtime":12455.336766053,"quantile_75":0.0001763763721100986,"entropy_w":5.591817855834961,"min_eigval_norm":-0.00031262554693967104,"sum_squared_off_diag_b":0.0004547934513539076,"rank_sigma":491,"complex_count":2,"diag_var":0.009067198261618614,"entropy_t":5.496436595916748,"quantile_25":-6.150313129182905e-05,"epoch_train":49,"loss_train":86.457470703125,"max_eigval_norm":0.0550832562148571,"quantile_50":3.242519960622303e-05,"max_diff":8.374452590942383e-05,"trace_sigma":30.649473190307617}
+\ No newline at end of file
+diff --git a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb
+index eb78a2b..fb7641a 100644
+Binary files a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb and b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb differ
+diff --git a/wandb/run-20250518_235123-kky73j59/files/code/train.py b/wandb/run-20250518_235123-kky73j59/files/code/train.py
+new file mode 100644
+index 0000000..f674700
+--- /dev/null
++++ b/wandb/run-20250518_235123-kky73j59/files/code/train.py
+@@ -0,0 +1,528 @@
++import os
++import random
++import gc
++from collections import defaultdict
++from functools import partial
++
++import numpy as np
++np.set_printoptions(precision=4, suppress=True)
++
++from PIL import Image
++from tqdm.notebook import tqdm
++from sklearn.metrics import accuracy_score
++
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++import torch.optim as optim
++import torch.distributed as dist
++import torch.multiprocessing as mp
++from torch.nn.parallel import DistributedDataParallel as DDP
++from torch.utils.checkpoint import checkpoint, checkpoint_sequential
++from torch.utils.data import DataLoader, random_split, Sampler, Subset
++from torch.utils.data.distributed import DistributedSampler
++
++import torchvision
++from torchvision import transforms, datasets
++
++import wandb
++
++from lda import LDA, lda_loss, sina_loss, SphericalLDA
++from models import ResNet, BasicBlock
++from utils import compute_wandb_metrics
++from eval import run_linear_probe_on_embeddings
++
++def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
++    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
++
++
++class Solver:
++    def __init__(self, dataloaders, model_path, n_classes, lda_args={}, local_rank=0, world_size=1, lr=1e-3, 
++                 gradient_accumulation_steps=1, use_amp=True, use_checkpoint=True):
++        self.dataloaders = dataloaders
++        self.local_rank = local_rank
++        self.world_size = world_size
++        self.device = torch.device(f'cuda:{local_rank}')
++        self.gradient_accumulation_steps = gradient_accumulation_steps
++        self.use_amp = use_amp
++        
++        # Create model with checkpointing enabled
++        self.net = ResNet18(n_classes, lda_args, use_checkpoint=use_checkpoint)
++        self.net = self.net.to(self.device)
++        
++        # Wrap model with DDP
++        if world_size > 1:
++            self.net = DDP(self.net, device_ids=[local_rank], output_device=local_rank,
++                           find_unused_parameters=False)  # Set to True only if needed
++        
++        self.use_lda = True if lda_args else False
++        if self.use_lda:
++            self.criterion = sina_loss 
++        else:
++            self.criterion = nn.CrossEntropyLoss()
++        
++        if local_rank == 0:
++            print(f"Using criterion: {self.criterion}")
++            print(f"Using checkpoint: {use_checkpoint}")
++            print(f"Using mixed precision: {use_amp}")
++            print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++
++        self.optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=5e-4)
++        self.scaler = torch.amp.GradScaler(enabled=use_amp)
++        self.model_path = model_path
++        self.n_classes = n_classes
++
++    def get_net(self):
++        return self.net.module if isinstance(self.net, DDP) else self.net
++
++    def handle_lda(self, inputs, targets, epoch, batch_idx):
++        net = self.get_net()
++        xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
++     
++    
++        
++        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
++    
++        if self.local_rank == 0 and batch_idx % 5==0:
++            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t)
++            wandb.log(metrics, commit=False)
++            wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
++    
++        return loss, sigma_w_inv_b
++
++    def iterate(self, epoch, phase):
++        get_net = self.get_net()
++        get_net.train(phase == 'train')
++    
++        dataloader = self.dataloaders[phase]
++        total_loss = 0
++        correct = 0
++        total = 0
++        entropy_sum = 0.0
++        entropy_count = 0
++    
++        torch.cuda.empty_cache()
++        gc.collect()
++    
++        for batch_idx, (inputs, targets) in enumerate(dataloader):
++            inputs = inputs.to(self.device, non_blocking=True)
++            targets = targets.to(self.device, non_blocking=True)
++    
++            if phase == 'train':
++                self.optimizer.zero_grad(set_to_none=True)
++                with torch.cuda.amp.autocast(enabled=self.use_amp):
++                    if self.use_lda:
++                        loss, sigma_w_inv_b = self.handle_lda(inputs, targets, epoch, batch_idx)
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++                self.scaler.scale(loss).backward()
++                self.scaler.unscale_(self.optimizer)
++                grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=5.0)
++                self.scaler.step(self.optimizer)
++                self.scaler.update()
++    
++                if self.local_rank == 0 and batch_idx % 5==0:
++                    wandb.log({"grad_norm": grad_norm.item()})
++            else:
++                with torch.no_grad():
++                    if self.use_lda:
++                        result = self.handle_lda(inputs, targets, epoch, batch_idx)
++                        raise NotImplementedError("handle_lda is not implemented yet")
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++            total_loss += loss.item()
++            total += targets.size(0)
++    
++            del inputs, targets
++            if self.use_lda and phase == 'train':
++                del sigma_w_inv_b
++            torch.cuda.empty_cache()
++    
++            
++        # Sync metrics across GPUs
++        if self.world_size > 1:
++            metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
++            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
++            total_loss = metrics.item()
++
++            
++        total_loss /= (batch_idx + 1) * self.world_size
++        # Log metrics
++        if self.local_rank == 0:
++            if entropy_count > 0:
++                average_entropy = entropy_sum / entropy_count
++                print(f'Average Entropy: {average_entropy:.4f}')
++            
++            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f}')
++            wandb.log({
++                f"epoch_{phase}": epoch,
++                f"loss_{phase}": total_loss,
++            }) 
++        return total_loss
++            
++
++    def save_checkpoint(self, epoch, val_loss, suffix=''):
++        checkpoint = {
++            'epoch': epoch,
++            'val_loss': val_loss,
++            'state_dict': self.get_net().state_dict()
++        }
++        path = self.model_path if not suffix else self.model_path.replace('.pth', f'_{suffix}.pth')
++        torch.save(checkpoint, path)
++
++    def train(self, epochs):
++        best_loss = -float('inf')
++    
++        for epoch in range(epochs):
++            # Set epoch for distributed samplers
++            if self.world_size > 1:
++                for phase in self.dataloaders:
++                    sampler = getattr(self.dataloaders[phase], 'sampler', None)
++                    if hasattr(sampler, 'set_epoch'):
++                        sampler.set_epoch(epoch)
++    
++            # Training phase (we ignore returned values here)
++            self.iterate(epoch, 'train')
++            if epoch % 5 == 0:
++                import time
++                start_time = time.time()
++                lda_accuracy = run_linear_probe_on_embeddings(
++                    self.dataloaders['complete_train'],
++                    self.dataloaders['val'],
++                    self.get_net(),
++                    use_amp=self.use_amp
++                )
++                
++                # Only rank 0 gets accuracy; others get None
++                if self.local_rank == 0 and lda_accuracy is not None:
++                    wandb.log({'lda_accuracy': lda_accuracy})
++                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
++                    print(f"Total time: {elapsed_time:.2f} minutes")
++
++
++    
++            # Save best model
++            if self.local_rank == 0:
++                if lda_accuracy > best_loss:
++                    best_loss = lda_accuracy
++                    print('Best val loss found')
++                    self.save_checkpoint(epoch, lda_accuracy)
++    
++                print()
++    
++        # Final save
++        if self.local_rank == 0:
++            self.save_checkpoint(epochs - 1, lda_accuracy, suffix='final')
++
++
++def setup(rank, world_size):
++    os.environ['MASTER_ADDR'] = 'localhost'
++    os.environ['MASTER_PORT'] = '12355'
++    
++    # Initialize the process group
++    dist.init_process_group("nccl", rank=rank, world_size=world_size)
++
++
++def cleanup():
++    dist.destroy_process_group()
++    
++def train_worker(rank, world_size, config):
++    import warnings
++    warnings.simplefilter(action='ignore', category=FutureWarning)
++    
++    class ClassBalancedBatchSampler(Sampler):
++        def __init__(self, dataset, k_classes: int, n_samples: int,
++                     world_size: int = 1, rank: int = 0, seed: int = 42):
++            """
++            Class-balanced batch sampler for distributed training.
++    
++            Args:
++                dataset: Dataset to sample from.
++                k_classes: Number of different classes in each batch.
++                n_samples: Number of samples per class.
++                world_size: Total number of distributed workers.
++                rank: Rank of the current worker.
++                seed: Random seed for reproducibility.
++            """
++            super().__init__(dataset)
++            self.dataset = dataset
++            self.k_classes = k_classes
++            self.n_samples = n_samples
++            self.world_size = world_size
++            self.rank = rank
++            self.seed = seed
++            self.epoch = 0  # Set externally before each epoch
++    
++            # Get target labels and build class-to-indices mapping
++            if isinstance(dataset, torch.utils.data.Subset):
++                indices = dataset.indices
++                targets = [dataset.dataset.targets[i] for i in indices]
++            else:
++                indices = range(len(dataset))
++                targets = dataset.targets
++    
++            self.class_to_indices = defaultdict(list)
++            for idx, label in zip(indices, targets):
++                self.class_to_indices[label].append(idx)
++    
++            # Filter out classes with insufficient samples
++            self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
++                                      if len(idxs) >= n_samples]
++            if len(self.available_classes) < k_classes:
++                raise ValueError(f"Need at least {k_classes} classes with ≥{n_samples} samples each, "
++                                 f"but only {len(self.available_classes)} are available.")
++    
++            # Estimate batches per epoch
++            total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
++            batch_size = k_classes * n_samples
++            print("total samples", total_samples)
++            print("batches per epoch", total_samples // batch_size)
++            self.batches_per_epoch = total_samples // batch_size
++    
++        def set_epoch(self, epoch: int):
++            self.epoch = epoch
++    
++        def __iter__(self):
++            rng = random.Random(self.seed + self.epoch + self.rank)
++            num_batches = 0
++            batch_size = self.k_classes * self.n_samples
++    
++            while num_batches < self.batches_per_epoch:
++                selected_classes = rng.sample(self.available_classes, self.k_classes)
++    
++                batch = np.empty(batch_size, dtype=int)
++                offset = 0
++                for cls in selected_classes:
++                    sampled_indices = rng.sample(self.class_to_indices[cls], self.n_samples)
++                    batch[offset:offset + self.n_samples] = sampled_indices
++                    offset += self.n_samples
++    
++                # Shard to the correct worker
++                if num_batches % self.world_size == self.rank:
++                    yield batch.tolist()
++    
++                num_batches += 1
++    
++        def __len__(self):
++            return self.batches_per_epoch // self.world_size
++
++            
++    # Configure CUDA
++    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'  # Help with fragmentation
++    
++    # Setup process group
++    setup(rank, world_size)
++    
++    # Set the device
++    torch.cuda.set_device(rank)
++    
++    # Initialize wandb only on rank 0
++    if rank == 0:
++        wandb.init(
++            project=config['wandb_project'],
++            entity=config['wandb_entity'],
++            group=config['wandb_group'],
++            config=config,  # Track configuration
++        )
++    
++    # Set seeds for reproducibility
++    seed = config['seed'] + rank  # Different seed per process
++    torch.manual_seed(seed)
++    np.random.seed(seed)
++    random.seed(seed)
++    
++    # Calculate effective batch size and adjust learning rate
++    global_batch_size = config['k_classes'] * config['n_samples'] * world_size
++    gradient_accumulation_steps = config.get('gradient_accumulation_steps', 1)
++    effective_batch_size = global_batch_size * gradient_accumulation_steps
++    base_lr = config.get('base_lr', 1e-3)
++    lr = base_lr#get_scaled_lr_sqrt(effective_batch_size, base_batch_size=config.get('base_batch_size', 128), base_lr=base_lr)
++    
++    if rank == 0:
++        print(f"Global batch size: {global_batch_size}")
++        print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++        print(f"Effective batch size: {effective_batch_size}")
++        print(f"Learning rate: {lr}")
++    
++    # Data loading code (same as original)
++    # ImageNet normalization
++    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
++                                     std=[0.229, 0.224, 0.225])
++
++    transform_train = transforms.Compose([
++        transforms.RandomResizedCrop(224),
++        transforms.RandomHorizontalFlip(),
++        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.IMAGENET),
++        transforms.ToTensor(),
++        normalize,
++    ])
++
++    transform_test = transforms.Compose([
++        transforms.Resize(256),
++        transforms.CenterCrop(224),
++        transforms.ToTensor(),
++        normalize,
++    ])
++    
++    
++     # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++
++
++
++    # Load the full datasets
++    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    
++    # Select 10 class indices (e.g., 10 random or specific ones)
++    selected_classes = list(range(100))  # or any 10 specific indices you want
++    
++    # Map class name to index
++    class_to_idx = trainset_full.class_to_idx
++    idx_to_class = {v: k for k, v in class_to_idx.items()}
++
++    
++    # Create a filter function
++    def filter_by_class(dataset, allowed_classes):
++        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
++        return Subset(dataset, indices)
++    
++    # Create filtered datasets
++    trainset = filter_by_class(trainset_full, selected_classes)
++    valset = filter_by_class(valset_full, selected_classes)
++    testset = filter_by_class(testset_full, selected_classes)
++
++    # Create subset
++    transit_size = int(1.0 * len(trainset))
++    indices = random.sample(range(len(trainset)), transit_size)
++    transit_subset = Subset(trainset, indices)
++
++    # Create distributed samplers
++    train_sampler = ClassBalancedBatchSampler(
++        dataset=trainset,
++        k_classes=config['k_classes'],
++        n_samples=config['n_samples'],
++        world_size=world_size,
++        rank=rank,
++        seed=config['seed']
++    )
++
++
++    val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
++    test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
++    complete_train_sampler = DistributedSampler(transit_subset, num_replicas=world_size, rank=rank, shuffle=False)
++    
++
++    # Create dataloaders
++    trainloader = torch.utils.data.DataLoader(
++        trainset,
++        batch_sampler=train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++        #persistent_workers=False
++    )
++
++    
++    valloader = torch.utils.data.DataLoader(
++        valset, 
++        batch_size=config['batch_size'],
++        sampler=val_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++    
++    testloader = torch.utils.data.DataLoader(
++        testset, 
++        batch_size=config['batch_size'],
++        sampler=test_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++        
++    complete_train_loader = torch.utils.data.DataLoader(
++        transit_subset, 
++        batch_size=config['batch_size'],
++        sampler=complete_train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++
++    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader, 'complete_train':complete_train_loader}
++    
++    if config['loss'] == 'LDA':
++        lda_args = {'lamb': config['lamb'], 'n_eig': config['n_eig'], 'margin': config['margin']}
++    else:
++        lda_args = {}
++        
++    # Create solver with optimized parameters
++    solver = Solver(
++        dataloaders=dataloaders, 
++        model_path=config['model_path'],
++        n_classes=config['n_classes'],
++        lda_args=lda_args if config['loss'] == 'LDA' else {},
++        local_rank=rank,
++        world_size=world_size,
++        lr=lr,
++        gradient_accumulation_steps=gradient_accumulation_steps,
++        use_amp=config.get('use_amp', True),
++        use_checkpoint=config.get('use_checkpointing', True)
++    )
++    
++    # Train
++    solver.train(config['epochs'])
++    
++    # Test
++    solver.test()
++    
++    # Clean up
++    cleanup()
++
++
++if __name__ == '__main__':
++    # Configuration with memory optimizations
++    config = {
++        'wandb_project': "DELETEME_small",
++        'wandb_entity': "gerardo-pastrana-c3-ai",
++        'wandb_group': "gapLoss",
++        'seed': 42,
++        'n_classes': 100,
++        'train_val_split': 0.1,
++        'batch_size': 1024,  # Global batch size
++        'num_workers': 1,  # Adjust based on CPU cores
++        'train_dir': '/data/datasets/imagenet_full_size/061417/train',
++        'val_dir': '/data/datasets/imagenet_full_size/061417/val',
++        'test_dir': '/data/datasets/imagenet_full_size/061417/test',
++        'model_path': 'models/deeplda_best.pth',
++        'loss': 'LDA',
++        'lamb': 0.0002,
++        'n_eig': 4,
++        'margin': None,
++        'epochs': 50,
++        'k_classes': 100,
++        'n_samples': 64, #32
++        # Memory optimization parameters
++        'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
++        'use_amp': True,                   # Use automatic mixed precision
++        'use_checkpointing': True,         # Use gradient checkpointing
++        'base_lr': 1e-3,                   # Base learning rate
++        'base_batch_size': 128,            # Reference batch size for LR scaling
++        'cuda_visible_devices': '',        # Optional GPU restrictions
++    }
++    
++    # Number of available GPUs
++    n_gpus = torch.cuda.device_count()
++    print(f"Using {n_gpus} GPUs")
++    
++    # Launch processes
++    mp.spawn(
++        train_worker,
++        args=(n_gpus, config),
++        nprocs=n_gpus,
++        join=True
++    )
+\ No newline at end of file
+diff --git a/wandb/run-20250518_235123-kky73j59/files/diff.patch b/wandb/run-20250518_235123-kky73j59/files/diff.patch
+new file mode 100644
+index 0000000..3c486e1
+--- /dev/null
++++ b/wandb/run-20250518_235123-kky73j59/files/diff.patch
+@@ -0,0 +1,37 @@
++diff --git a/lda.py b/lda.py
++index 93316df..48561f1 100644
++--- a/lda.py
+++++ b/lda.py
++@@ -50,14 +50,15 @@ def lda(X, y, n_classes, lamb):
++         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
++ 
++     #Sb = St - Sw
++-    mu = torch.trace(Sw) / D # 1.0 / D #
++-    shrinkage = 0.1 # 1- torch.trace(Sw) 
++-    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    # mu = torch.trace(Sw) / D # 1.0 / D #
+++    # shrinkage = 0.1 # 1- torch.trace(Sw) 
+++    # Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++     
++     # add mean? add something to Sw_reg?
++     #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
++-    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++-    temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+++    Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    Sb_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    temp = torch.linalg.solve(Sw_reg, Sb_reg) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
++     #temp = (temp + temp.T) / 2
++     
++     return Xc_mean, temp, Sw, Sb, St
++diff --git a/wandb/latest-run b/wandb/latest-run
++index 69bd6ff..3cddc55 120000
++--- a/wandb/latest-run
+++++ b/wandb/latest-run
++@@ -1 +1 @@
++-run-20250518_202241-r3faoyl2
++\ No newline at end of file
+++run-20250518_235123-kky73j59
++\ No newline at end of file
++diff --git a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb
++index eb78a2b..fb7641a 100644
++Binary files a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb and b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb differ
+diff --git a/wandb/run-20250518_235123-kky73j59/files/requirements.txt b/wandb/run-20250518_235123-kky73j59/files/requirements.txt
+new file mode 100644
+index 0000000..95994b0
+--- /dev/null
++++ b/wandb/run-20250518_235123-kky73j59/files/requirements.txt
+@@ -0,0 +1,84 @@
++GitPython==3.1.44
++charset-normalizer==3.4.1
++platformdirs==4.3.7
++nvidia-nccl-cu12==2.21.5
++nvidia-cusparselt-cu12==0.6.2
++smmap==5.0.2
++zope.deprecation==5.1
++setproctitle==1.3.5
++plaster-pastedeploy==1.0.1
++sentry-sdk==2.26.1
++click==8.1.8
++numpy==2.0.2
++fsspec==2025.3.2
++pydantic==2.11.3
++nvidia-cuda-cupti-cu12==12.4.127
++certifi==2025.1.31
++mpmath==1.3.0
++urllib3==2.4.0
++MarkupSafe==3.0.2
++pydantic_core==2.33.1
++typing-inspection==0.4.0
++WebOb==1.8.9
++gitdb==4.0.12
++annotated-types==0.7.0
++nvidia-cufft-cu12==11.2.1.3
++torchvision==0.21.0
++google==3.0.0
++translationstring==1.4
++nvidia-cuda-runtime-cu12==12.4.127
++psutil==7.0.0
++idna==3.10
++typing_extensions==4.13.2
++scipy==1.13.1
++requests==2.32.3
++nvidia-nvtx-cu12==12.4.127
++networkx==3.2.1
++nvidia-curand-cu12==10.3.5.147
++nvidia-cusolver-cu12==11.6.1.9
++pip==25.0.1
++nvidia-nvjitlink-cu12==12.4.127
++six==1.17.0
++scikit-learn==1.6.1
++triton==3.2.0
++setuptools==78.1.0
++sympy==1.13.1
++plaster==1.1.2
++nvidia-cusparse-cu12==12.3.1.170
++beautifulsoup4==4.13.4
++venusian==3.1.1
++zope.interface==7.2
++wandb==0.19.9
++tqdm==4.67.1
++nvidia-cuda-nvrtc-cu12==12.4.127
++PyYAML==6.0.2
++hupper==1.12.1
++joblib==1.4.2
++Jinja2==3.1.6
++protobuf==3.20.3
++soupsieve==2.7
++nvidia-cudnn-cu12==9.1.0.70
++pyramid==2.0.2
++filelock==3.18.0
++nvidia-cublas-cu12==12.4.5.8
++pillow==11.2.1
++PasteDeploy==3.1.0
++docker-pycreds==0.4.0
++torch==2.6.0
++threadpoolctl==3.6.0
++typing_extensions==4.12.2
++tomli==2.0.1
++importlib_metadata==8.0.0
++jaraco.functools==4.0.1
++more-itertools==10.3.0
++autocommand==2.2.2
++backports.tarfile==1.2.0
++jaraco.collections==5.1.0
++typeguard==4.3.0
++jaraco.context==5.3.0
++inflect==7.3.1
++packaging==24.2
++jaraco.text==3.12.1
++wheel==0.45.1
++platformdirs==4.2.2
++zipp==3.19.2
+diff --git a/wandb/run-20250518_235123-kky73j59/files/wandb-metadata.json b/wandb/run-20250518_235123-kky73j59/files/wandb-metadata.json
+new file mode 100644
+index 0000000..a073f77
+--- /dev/null
++++ b/wandb/run-20250518_235123-kky73j59/files/wandb-metadata.json
+@@ -0,0 +1,60 @@
++{
++  "os": "Linux-5.15.146+-x86_64-with-glibc2.31",
++  "python": "CPython 3.11.4",
++  "startedAt": "2025-05-18T23:51:23.743325Z",
++  "program": "/workspace/Lidar/supervised_learning/train.py",
++  "codePath": "train.py",
++  "git": {
++    "remote": "https://github.com/c3-gerardopastrana/supervised_learning.git",
++    "commit": "d1e21e78a5d4b4214c9f4fb53b3817babd76dd5b"
++  },
++  "email": "utsavdutta98@gmail.com",
++  "root": "/workspace/Lidar/supervised_learning",
++  "host": "finetuning-80gb-4-5-59d4d9d89f-rtctb",
++  "executable": "/root/.cache/pypoetry/virtualenvs/deeplda-project-lMrMy_DZ-py3.11/bin/python",
++  "codePathLocal": "train.py",
++  "cpu_count": 48,
++  "cpu_count_logical": 96,
++  "gpu": "NVIDIA A100-SXM4-80GB",
++  "gpu_count": 4,
++  "disk": {
++    "/": {
++      "total": "3168432029696",
++      "used": "825353404416"
++    }
++  },
++  "memory": {
++    "total": "1437341159424"
++  },
++  "cpu": {
++    "count": 48,
++    "countLogical": 96
++  },
++  "gpu_nvidia": [
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    }
++  ],
++  "cudaVersion": "12.4"
++}
+\ No newline at end of file
+diff --git a/wandb/run-20250518_235123-kky73j59/run-kky73j59.wandb b/wandb/run-20250518_235123-kky73j59/run-kky73j59.wandb
+new file mode 100644
+index 0000000..1bc2a65
+Binary files /dev/null and b/wandb/run-20250518_235123-kky73j59/run-kky73j59.wandb differ
+diff --git a/wandb/run-20250519_010020-sqgl9tp4/files/code/train.py b/wandb/run-20250519_010020-sqgl9tp4/files/code/train.py
+new file mode 100644
+index 0000000..f674700
+--- /dev/null
++++ b/wandb/run-20250519_010020-sqgl9tp4/files/code/train.py
+@@ -0,0 +1,528 @@
++import os
++import random
++import gc
++from collections import defaultdict
++from functools import partial
++
++import numpy as np
++np.set_printoptions(precision=4, suppress=True)
++
++from PIL import Image
++from tqdm.notebook import tqdm
++from sklearn.metrics import accuracy_score
++
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++import torch.optim as optim
++import torch.distributed as dist
++import torch.multiprocessing as mp
++from torch.nn.parallel import DistributedDataParallel as DDP
++from torch.utils.checkpoint import checkpoint, checkpoint_sequential
++from torch.utils.data import DataLoader, random_split, Sampler, Subset
++from torch.utils.data.distributed import DistributedSampler
++
++import torchvision
++from torchvision import transforms, datasets
++
++import wandb
++
++from lda import LDA, lda_loss, sina_loss, SphericalLDA
++from models import ResNet, BasicBlock
++from utils import compute_wandb_metrics
++from eval import run_linear_probe_on_embeddings
++
++def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
++    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
++
++
++class Solver:
++    def __init__(self, dataloaders, model_path, n_classes, lda_args={}, local_rank=0, world_size=1, lr=1e-3, 
++                 gradient_accumulation_steps=1, use_amp=True, use_checkpoint=True):
++        self.dataloaders = dataloaders
++        self.local_rank = local_rank
++        self.world_size = world_size
++        self.device = torch.device(f'cuda:{local_rank}')
++        self.gradient_accumulation_steps = gradient_accumulation_steps
++        self.use_amp = use_amp
++        
++        # Create model with checkpointing enabled
++        self.net = ResNet18(n_classes, lda_args, use_checkpoint=use_checkpoint)
++        self.net = self.net.to(self.device)
++        
++        # Wrap model with DDP
++        if world_size > 1:
++            self.net = DDP(self.net, device_ids=[local_rank], output_device=local_rank,
++                           find_unused_parameters=False)  # Set to True only if needed
++        
++        self.use_lda = True if lda_args else False
++        if self.use_lda:
++            self.criterion = sina_loss 
++        else:
++            self.criterion = nn.CrossEntropyLoss()
++        
++        if local_rank == 0:
++            print(f"Using criterion: {self.criterion}")
++            print(f"Using checkpoint: {use_checkpoint}")
++            print(f"Using mixed precision: {use_amp}")
++            print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++
++        self.optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=5e-4)
++        self.scaler = torch.amp.GradScaler(enabled=use_amp)
++        self.model_path = model_path
++        self.n_classes = n_classes
++
++    def get_net(self):
++        return self.net.module if isinstance(self.net, DDP) else self.net
++
++    def handle_lda(self, inputs, targets, epoch, batch_idx):
++        net = self.get_net()
++        xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
++     
++    
++        
++        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
++    
++        if self.local_rank == 0 and batch_idx % 5==0:
++            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t)
++            wandb.log(metrics, commit=False)
++            wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
++    
++        return loss, sigma_w_inv_b
++
++    def iterate(self, epoch, phase):
++        get_net = self.get_net()
++        get_net.train(phase == 'train')
++    
++        dataloader = self.dataloaders[phase]
++        total_loss = 0
++        correct = 0
++        total = 0
++        entropy_sum = 0.0
++        entropy_count = 0
++    
++        torch.cuda.empty_cache()
++        gc.collect()
++    
++        for batch_idx, (inputs, targets) in enumerate(dataloader):
++            inputs = inputs.to(self.device, non_blocking=True)
++            targets = targets.to(self.device, non_blocking=True)
++    
++            if phase == 'train':
++                self.optimizer.zero_grad(set_to_none=True)
++                with torch.cuda.amp.autocast(enabled=self.use_amp):
++                    if self.use_lda:
++                        loss, sigma_w_inv_b = self.handle_lda(inputs, targets, epoch, batch_idx)
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++                self.scaler.scale(loss).backward()
++                self.scaler.unscale_(self.optimizer)
++                grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=5.0)
++                self.scaler.step(self.optimizer)
++                self.scaler.update()
++    
++                if self.local_rank == 0 and batch_idx % 5==0:
++                    wandb.log({"grad_norm": grad_norm.item()})
++            else:
++                with torch.no_grad():
++                    if self.use_lda:
++                        result = self.handle_lda(inputs, targets, epoch, batch_idx)
++                        raise NotImplementedError("handle_lda is not implemented yet")
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++            total_loss += loss.item()
++            total += targets.size(0)
++    
++            del inputs, targets
++            if self.use_lda and phase == 'train':
++                del sigma_w_inv_b
++            torch.cuda.empty_cache()
++    
++            
++        # Sync metrics across GPUs
++        if self.world_size > 1:
++            metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
++            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
++            total_loss = metrics.item()
++
++            
++        total_loss /= (batch_idx + 1) * self.world_size
++        # Log metrics
++        if self.local_rank == 0:
++            if entropy_count > 0:
++                average_entropy = entropy_sum / entropy_count
++                print(f'Average Entropy: {average_entropy:.4f}')
++            
++            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f}')
++            wandb.log({
++                f"epoch_{phase}": epoch,
++                f"loss_{phase}": total_loss,
++            }) 
++        return total_loss
++            
++
++    def save_checkpoint(self, epoch, val_loss, suffix=''):
++        checkpoint = {
++            'epoch': epoch,
++            'val_loss': val_loss,
++            'state_dict': self.get_net().state_dict()
++        }
++        path = self.model_path if not suffix else self.model_path.replace('.pth', f'_{suffix}.pth')
++        torch.save(checkpoint, path)
++
++    def train(self, epochs):
++        best_loss = -float('inf')
++    
++        for epoch in range(epochs):
++            # Set epoch for distributed samplers
++            if self.world_size > 1:
++                for phase in self.dataloaders:
++                    sampler = getattr(self.dataloaders[phase], 'sampler', None)
++                    if hasattr(sampler, 'set_epoch'):
++                        sampler.set_epoch(epoch)
++    
++            # Training phase (we ignore returned values here)
++            self.iterate(epoch, 'train')
++            if epoch % 5 == 0:
++                import time
++                start_time = time.time()
++                lda_accuracy = run_linear_probe_on_embeddings(
++                    self.dataloaders['complete_train'],
++                    self.dataloaders['val'],
++                    self.get_net(),
++                    use_amp=self.use_amp
++                )
++                
++                # Only rank 0 gets accuracy; others get None
++                if self.local_rank == 0 and lda_accuracy is not None:
++                    wandb.log({'lda_accuracy': lda_accuracy})
++                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
++                    print(f"Total time: {elapsed_time:.2f} minutes")
++
++
++    
++            # Save best model
++            if self.local_rank == 0:
++                if lda_accuracy > best_loss:
++                    best_loss = lda_accuracy
++                    print('Best val loss found')
++                    self.save_checkpoint(epoch, lda_accuracy)
++    
++                print()
++    
++        # Final save
++        if self.local_rank == 0:
++            self.save_checkpoint(epochs - 1, lda_accuracy, suffix='final')
++
++
++def setup(rank, world_size):
++    os.environ['MASTER_ADDR'] = 'localhost'
++    os.environ['MASTER_PORT'] = '12355'
++    
++    # Initialize the process group
++    dist.init_process_group("nccl", rank=rank, world_size=world_size)
++
++
++def cleanup():
++    dist.destroy_process_group()
++    
++def train_worker(rank, world_size, config):
++    import warnings
++    warnings.simplefilter(action='ignore', category=FutureWarning)
++    
++    class ClassBalancedBatchSampler(Sampler):
++        def __init__(self, dataset, k_classes: int, n_samples: int,
++                     world_size: int = 1, rank: int = 0, seed: int = 42):
++            """
++            Class-balanced batch sampler for distributed training.
++    
++            Args:
++                dataset: Dataset to sample from.
++                k_classes: Number of different classes in each batch.
++                n_samples: Number of samples per class.
++                world_size: Total number of distributed workers.
++                rank: Rank of the current worker.
++                seed: Random seed for reproducibility.
++            """
++            super().__init__(dataset)
++            self.dataset = dataset
++            self.k_classes = k_classes
++            self.n_samples = n_samples
++            self.world_size = world_size
++            self.rank = rank
++            self.seed = seed
++            self.epoch = 0  # Set externally before each epoch
++    
++            # Get target labels and build class-to-indices mapping
++            if isinstance(dataset, torch.utils.data.Subset):
++                indices = dataset.indices
++                targets = [dataset.dataset.targets[i] for i in indices]
++            else:
++                indices = range(len(dataset))
++                targets = dataset.targets
++    
++            self.class_to_indices = defaultdict(list)
++            for idx, label in zip(indices, targets):
++                self.class_to_indices[label].append(idx)
++    
++            # Filter out classes with insufficient samples
++            self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
++                                      if len(idxs) >= n_samples]
++            if len(self.available_classes) < k_classes:
++                raise ValueError(f"Need at least {k_classes} classes with ≥{n_samples} samples each, "
++                                 f"but only {len(self.available_classes)} are available.")
++    
++            # Estimate batches per epoch
++            total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
++            batch_size = k_classes * n_samples
++            print("total samples", total_samples)
++            print("batches per epoch", total_samples // batch_size)
++            self.batches_per_epoch = total_samples // batch_size
++    
++        def set_epoch(self, epoch: int):
++            self.epoch = epoch
++    
++        def __iter__(self):
++            rng = random.Random(self.seed + self.epoch + self.rank)
++            num_batches = 0
++            batch_size = self.k_classes * self.n_samples
++    
++            while num_batches < self.batches_per_epoch:
++                selected_classes = rng.sample(self.available_classes, self.k_classes)
++    
++                batch = np.empty(batch_size, dtype=int)
++                offset = 0
++                for cls in selected_classes:
++                    sampled_indices = rng.sample(self.class_to_indices[cls], self.n_samples)
++                    batch[offset:offset + self.n_samples] = sampled_indices
++                    offset += self.n_samples
++    
++                # Shard to the correct worker
++                if num_batches % self.world_size == self.rank:
++                    yield batch.tolist()
++    
++                num_batches += 1
++    
++        def __len__(self):
++            return self.batches_per_epoch // self.world_size
++
++            
++    # Configure CUDA
++    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'  # Help with fragmentation
++    
++    # Setup process group
++    setup(rank, world_size)
++    
++    # Set the device
++    torch.cuda.set_device(rank)
++    
++    # Initialize wandb only on rank 0
++    if rank == 0:
++        wandb.init(
++            project=config['wandb_project'],
++            entity=config['wandb_entity'],
++            group=config['wandb_group'],
++            config=config,  # Track configuration
++        )
++    
++    # Set seeds for reproducibility
++    seed = config['seed'] + rank  # Different seed per process
++    torch.manual_seed(seed)
++    np.random.seed(seed)
++    random.seed(seed)
++    
++    # Calculate effective batch size and adjust learning rate
++    global_batch_size = config['k_classes'] * config['n_samples'] * world_size
++    gradient_accumulation_steps = config.get('gradient_accumulation_steps', 1)
++    effective_batch_size = global_batch_size * gradient_accumulation_steps
++    base_lr = config.get('base_lr', 1e-3)
++    lr = base_lr#get_scaled_lr_sqrt(effective_batch_size, base_batch_size=config.get('base_batch_size', 128), base_lr=base_lr)
++    
++    if rank == 0:
++        print(f"Global batch size: {global_batch_size}")
++        print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++        print(f"Effective batch size: {effective_batch_size}")
++        print(f"Learning rate: {lr}")
++    
++    # Data loading code (same as original)
++    # ImageNet normalization
++    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
++                                     std=[0.229, 0.224, 0.225])
++
++    transform_train = transforms.Compose([
++        transforms.RandomResizedCrop(224),
++        transforms.RandomHorizontalFlip(),
++        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.IMAGENET),
++        transforms.ToTensor(),
++        normalize,
++    ])
++
++    transform_test = transforms.Compose([
++        transforms.Resize(256),
++        transforms.CenterCrop(224),
++        transforms.ToTensor(),
++        normalize,
++    ])
++    
++    
++     # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++
++
++
++    # Load the full datasets
++    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    
++    # Select 10 class indices (e.g., 10 random or specific ones)
++    selected_classes = list(range(100))  # or any 10 specific indices you want
++    
++    # Map class name to index
++    class_to_idx = trainset_full.class_to_idx
++    idx_to_class = {v: k for k, v in class_to_idx.items()}
++
++    
++    # Create a filter function
++    def filter_by_class(dataset, allowed_classes):
++        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
++        return Subset(dataset, indices)
++    
++    # Create filtered datasets
++    trainset = filter_by_class(trainset_full, selected_classes)
++    valset = filter_by_class(valset_full, selected_classes)
++    testset = filter_by_class(testset_full, selected_classes)
++
++    # Create subset
++    transit_size = int(1.0 * len(trainset))
++    indices = random.sample(range(len(trainset)), transit_size)
++    transit_subset = Subset(trainset, indices)
++
++    # Create distributed samplers
++    train_sampler = ClassBalancedBatchSampler(
++        dataset=trainset,
++        k_classes=config['k_classes'],
++        n_samples=config['n_samples'],
++        world_size=world_size,
++        rank=rank,
++        seed=config['seed']
++    )
++
++
++    val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
++    test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
++    complete_train_sampler = DistributedSampler(transit_subset, num_replicas=world_size, rank=rank, shuffle=False)
++    
++
++    # Create dataloaders
++    trainloader = torch.utils.data.DataLoader(
++        trainset,
++        batch_sampler=train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++        #persistent_workers=False
++    )
++
++    
++    valloader = torch.utils.data.DataLoader(
++        valset, 
++        batch_size=config['batch_size'],
++        sampler=val_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++    
++    testloader = torch.utils.data.DataLoader(
++        testset, 
++        batch_size=config['batch_size'],
++        sampler=test_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++        
++    complete_train_loader = torch.utils.data.DataLoader(
++        transit_subset, 
++        batch_size=config['batch_size'],
++        sampler=complete_train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++
++    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader, 'complete_train':complete_train_loader}
++    
++    if config['loss'] == 'LDA':
++        lda_args = {'lamb': config['lamb'], 'n_eig': config['n_eig'], 'margin': config['margin']}
++    else:
++        lda_args = {}
++        
++    # Create solver with optimized parameters
++    solver = Solver(
++        dataloaders=dataloaders, 
++        model_path=config['model_path'],
++        n_classes=config['n_classes'],
++        lda_args=lda_args if config['loss'] == 'LDA' else {},
++        local_rank=rank,
++        world_size=world_size,
++        lr=lr,
++        gradient_accumulation_steps=gradient_accumulation_steps,
++        use_amp=config.get('use_amp', True),
++        use_checkpoint=config.get('use_checkpointing', True)
++    )
++    
++    # Train
++    solver.train(config['epochs'])
++    
++    # Test
++    solver.test()
++    
++    # Clean up
++    cleanup()
++
++
++if __name__ == '__main__':
++    # Configuration with memory optimizations
++    config = {
++        'wandb_project': "DELETEME_small",
++        'wandb_entity': "gerardo-pastrana-c3-ai",
++        'wandb_group': "gapLoss",
++        'seed': 42,
++        'n_classes': 100,
++        'train_val_split': 0.1,
++        'batch_size': 1024,  # Global batch size
++        'num_workers': 1,  # Adjust based on CPU cores
++        'train_dir': '/data/datasets/imagenet_full_size/061417/train',
++        'val_dir': '/data/datasets/imagenet_full_size/061417/val',
++        'test_dir': '/data/datasets/imagenet_full_size/061417/test',
++        'model_path': 'models/deeplda_best.pth',
++        'loss': 'LDA',
++        'lamb': 0.0002,
++        'n_eig': 4,
++        'margin': None,
++        'epochs': 50,
++        'k_classes': 100,
++        'n_samples': 64, #32
++        # Memory optimization parameters
++        'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
++        'use_amp': True,                   # Use automatic mixed precision
++        'use_checkpointing': True,         # Use gradient checkpointing
++        'base_lr': 1e-3,                   # Base learning rate
++        'base_batch_size': 128,            # Reference batch size for LR scaling
++        'cuda_visible_devices': '',        # Optional GPU restrictions
++    }
++    
++    # Number of available GPUs
++    n_gpus = torch.cuda.device_count()
++    print(f"Using {n_gpus} GPUs")
++    
++    # Launch processes
++    mp.spawn(
++        train_worker,
++        args=(n_gpus, config),
++        nprocs=n_gpus,
++        join=True
++    )
+\ No newline at end of file
+diff --git a/wandb/run-20250519_010020-sqgl9tp4/files/diff.patch b/wandb/run-20250519_010020-sqgl9tp4/files/diff.patch
+new file mode 100644
+index 0000000..7427fb3
+--- /dev/null
++++ b/wandb/run-20250519_010020-sqgl9tp4/files/diff.patch
+@@ -0,0 +1,37 @@
++diff --git a/lda.py b/lda.py
++index 93316df..e7e9e71 100644
++--- a/lda.py
+++++ b/lda.py
++@@ -50,14 +50,15 @@ def lda(X, y, n_classes, lamb):
++         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
++ 
++     #Sb = St - Sw
++-    mu = torch.trace(Sw) / D # 1.0 / D #
++-    shrinkage = 0.1 # 1- torch.trace(Sw) 
++-    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    # mu = torch.trace(Sw) / D # 1.0 / D #
+++    # shrinkage = 0.1 # 1- torch.trace(Sw) 
+++    # Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++     
++     # add mean? add something to Sw_reg?
++     #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
++-    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++-    temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+++    Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    Sb_reg = Sb + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    temp = torch.linalg.solve(Sw_reg, Sb_reg) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
++     #temp = (temp + temp.T) / 2
++     
++     return Xc_mean, temp, Sw, Sb, St
++diff --git a/wandb/latest-run b/wandb/latest-run
++index 69bd6ff..1e327e9 120000
++--- a/wandb/latest-run
+++++ b/wandb/latest-run
++@@ -1 +1 @@
++-run-20250518_202241-r3faoyl2
++\ No newline at end of file
+++run-20250519_010020-sqgl9tp4
++\ No newline at end of file
++diff --git a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb
++index eb78a2b..fb7641a 100644
++Binary files a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb and b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb differ
+diff --git a/wandb/run-20250519_010020-sqgl9tp4/files/requirements.txt b/wandb/run-20250519_010020-sqgl9tp4/files/requirements.txt
+new file mode 100644
+index 0000000..95994b0
+--- /dev/null
++++ b/wandb/run-20250519_010020-sqgl9tp4/files/requirements.txt
+@@ -0,0 +1,84 @@
++GitPython==3.1.44
++charset-normalizer==3.4.1
++platformdirs==4.3.7
++nvidia-nccl-cu12==2.21.5
++nvidia-cusparselt-cu12==0.6.2
++smmap==5.0.2
++zope.deprecation==5.1
++setproctitle==1.3.5
++plaster-pastedeploy==1.0.1
++sentry-sdk==2.26.1
++click==8.1.8
++numpy==2.0.2
++fsspec==2025.3.2
++pydantic==2.11.3
++nvidia-cuda-cupti-cu12==12.4.127
++certifi==2025.1.31
++mpmath==1.3.0
++urllib3==2.4.0
++MarkupSafe==3.0.2
++pydantic_core==2.33.1
++typing-inspection==0.4.0
++WebOb==1.8.9
++gitdb==4.0.12
++annotated-types==0.7.0
++nvidia-cufft-cu12==11.2.1.3
++torchvision==0.21.0
++google==3.0.0
++translationstring==1.4
++nvidia-cuda-runtime-cu12==12.4.127
++psutil==7.0.0
++idna==3.10
++typing_extensions==4.13.2
++scipy==1.13.1
++requests==2.32.3
++nvidia-nvtx-cu12==12.4.127
++networkx==3.2.1
++nvidia-curand-cu12==10.3.5.147
++nvidia-cusolver-cu12==11.6.1.9
++pip==25.0.1
++nvidia-nvjitlink-cu12==12.4.127
++six==1.17.0
++scikit-learn==1.6.1
++triton==3.2.0
++setuptools==78.1.0
++sympy==1.13.1
++plaster==1.1.2
++nvidia-cusparse-cu12==12.3.1.170
++beautifulsoup4==4.13.4
++venusian==3.1.1
++zope.interface==7.2
++wandb==0.19.9
++tqdm==4.67.1
++nvidia-cuda-nvrtc-cu12==12.4.127
++PyYAML==6.0.2
++hupper==1.12.1
++joblib==1.4.2
++Jinja2==3.1.6
++protobuf==3.20.3
++soupsieve==2.7
++nvidia-cudnn-cu12==9.1.0.70
++pyramid==2.0.2
++filelock==3.18.0
++nvidia-cublas-cu12==12.4.5.8
++pillow==11.2.1
++PasteDeploy==3.1.0
++docker-pycreds==0.4.0
++torch==2.6.0
++threadpoolctl==3.6.0
++typing_extensions==4.12.2
++tomli==2.0.1
++importlib_metadata==8.0.0
++jaraco.functools==4.0.1
++more-itertools==10.3.0
++autocommand==2.2.2
++backports.tarfile==1.2.0
++jaraco.collections==5.1.0
++typeguard==4.3.0
++jaraco.context==5.3.0
++inflect==7.3.1
++packaging==24.2
++jaraco.text==3.12.1
++wheel==0.45.1
++platformdirs==4.2.2
++zipp==3.19.2
+diff --git a/wandb/run-20250519_010020-sqgl9tp4/files/wandb-metadata.json b/wandb/run-20250519_010020-sqgl9tp4/files/wandb-metadata.json
+new file mode 100644
+index 0000000..51f4a9f
+--- /dev/null
++++ b/wandb/run-20250519_010020-sqgl9tp4/files/wandb-metadata.json
+@@ -0,0 +1,60 @@
++{
++  "os": "Linux-5.15.146+-x86_64-with-glibc2.31",
++  "python": "CPython 3.11.4",
++  "startedAt": "2025-05-19T01:00:20.892546Z",
++  "program": "/workspace/Lidar/supervised_learning/train.py",
++  "codePath": "train.py",
++  "git": {
++    "remote": "https://github.com/c3-gerardopastrana/supervised_learning.git",
++    "commit": "d1e21e78a5d4b4214c9f4fb53b3817babd76dd5b"
++  },
++  "email": "utsavdutta98@gmail.com",
++  "root": "/workspace/Lidar/supervised_learning",
++  "host": "finetuning-80gb-4-5-59d4d9d89f-rtctb",
++  "executable": "/root/.cache/pypoetry/virtualenvs/deeplda-project-lMrMy_DZ-py3.11/bin/python",
++  "codePathLocal": "train.py",
++  "cpu_count": 48,
++  "cpu_count_logical": 96,
++  "gpu": "NVIDIA A100-SXM4-80GB",
++  "gpu_count": 4,
++  "disk": {
++    "/": {
++      "total": "3168432029696",
++      "used": "825354567680"
++    }
++  },
++  "memory": {
++    "total": "1437341159424"
++  },
++  "cpu": {
++    "count": 48,
++    "countLogical": 96
++  },
++  "gpu_nvidia": [
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    }
++  ],
++  "cudaVersion": "12.4"
++}
+\ No newline at end of file
+diff --git a/wandb/run-20250519_010020-sqgl9tp4/run-sqgl9tp4.wandb b/wandb/run-20250519_010020-sqgl9tp4/run-sqgl9tp4.wandb
+new file mode 100644
+index 0000000..f85f0ed
+Binary files /dev/null and b/wandb/run-20250519_010020-sqgl9tp4/run-sqgl9tp4.wandb differ
+diff --git a/wandb/run-20250519_011132-37tte9ls/files/code/train.py b/wandb/run-20250519_011132-37tte9ls/files/code/train.py
+new file mode 100644
+index 0000000..f674700
+--- /dev/null
++++ b/wandb/run-20250519_011132-37tte9ls/files/code/train.py
+@@ -0,0 +1,528 @@
++import os
++import random
++import gc
++from collections import defaultdict
++from functools import partial
++
++import numpy as np
++np.set_printoptions(precision=4, suppress=True)
++
++from PIL import Image
++from tqdm.notebook import tqdm
++from sklearn.metrics import accuracy_score
++
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++import torch.optim as optim
++import torch.distributed as dist
++import torch.multiprocessing as mp
++from torch.nn.parallel import DistributedDataParallel as DDP
++from torch.utils.checkpoint import checkpoint, checkpoint_sequential
++from torch.utils.data import DataLoader, random_split, Sampler, Subset
++from torch.utils.data.distributed import DistributedSampler
++
++import torchvision
++from torchvision import transforms, datasets
++
++import wandb
++
++from lda import LDA, lda_loss, sina_loss, SphericalLDA
++from models import ResNet, BasicBlock
++from utils import compute_wandb_metrics
++from eval import run_linear_probe_on_embeddings
++
++def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
++    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
++
++
++class Solver:
++    def __init__(self, dataloaders, model_path, n_classes, lda_args={}, local_rank=0, world_size=1, lr=1e-3, 
++                 gradient_accumulation_steps=1, use_amp=True, use_checkpoint=True):
++        self.dataloaders = dataloaders
++        self.local_rank = local_rank
++        self.world_size = world_size
++        self.device = torch.device(f'cuda:{local_rank}')
++        self.gradient_accumulation_steps = gradient_accumulation_steps
++        self.use_amp = use_amp
++        
++        # Create model with checkpointing enabled
++        self.net = ResNet18(n_classes, lda_args, use_checkpoint=use_checkpoint)
++        self.net = self.net.to(self.device)
++        
++        # Wrap model with DDP
++        if world_size > 1:
++            self.net = DDP(self.net, device_ids=[local_rank], output_device=local_rank,
++                           find_unused_parameters=False)  # Set to True only if needed
++        
++        self.use_lda = True if lda_args else False
++        if self.use_lda:
++            self.criterion = sina_loss 
++        else:
++            self.criterion = nn.CrossEntropyLoss()
++        
++        if local_rank == 0:
++            print(f"Using criterion: {self.criterion}")
++            print(f"Using checkpoint: {use_checkpoint}")
++            print(f"Using mixed precision: {use_amp}")
++            print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++
++        self.optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=5e-4)
++        self.scaler = torch.amp.GradScaler(enabled=use_amp)
++        self.model_path = model_path
++        self.n_classes = n_classes
++
++    def get_net(self):
++        return self.net.module if isinstance(self.net, DDP) else self.net
++
++    def handle_lda(self, inputs, targets, epoch, batch_idx):
++        net = self.get_net()
++        xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
++     
++    
++        
++        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
++    
++        if self.local_rank == 0 and batch_idx % 5==0:
++            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t)
++            wandb.log(metrics, commit=False)
++            wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
++    
++        return loss, sigma_w_inv_b
++
++    def iterate(self, epoch, phase):
++        get_net = self.get_net()
++        get_net.train(phase == 'train')
++    
++        dataloader = self.dataloaders[phase]
++        total_loss = 0
++        correct = 0
++        total = 0
++        entropy_sum = 0.0
++        entropy_count = 0
++    
++        torch.cuda.empty_cache()
++        gc.collect()
++    
++        for batch_idx, (inputs, targets) in enumerate(dataloader):
++            inputs = inputs.to(self.device, non_blocking=True)
++            targets = targets.to(self.device, non_blocking=True)
++    
++            if phase == 'train':
++                self.optimizer.zero_grad(set_to_none=True)
++                with torch.cuda.amp.autocast(enabled=self.use_amp):
++                    if self.use_lda:
++                        loss, sigma_w_inv_b = self.handle_lda(inputs, targets, epoch, batch_idx)
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++                self.scaler.scale(loss).backward()
++                self.scaler.unscale_(self.optimizer)
++                grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=5.0)
++                self.scaler.step(self.optimizer)
++                self.scaler.update()
++    
++                if self.local_rank == 0 and batch_idx % 5==0:
++                    wandb.log({"grad_norm": grad_norm.item()})
++            else:
++                with torch.no_grad():
++                    if self.use_lda:
++                        result = self.handle_lda(inputs, targets, epoch, batch_idx)
++                        raise NotImplementedError("handle_lda is not implemented yet")
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++            total_loss += loss.item()
++            total += targets.size(0)
++    
++            del inputs, targets
++            if self.use_lda and phase == 'train':
++                del sigma_w_inv_b
++            torch.cuda.empty_cache()
++    
++            
++        # Sync metrics across GPUs
++        if self.world_size > 1:
++            metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
++            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
++            total_loss = metrics.item()
++
++            
++        total_loss /= (batch_idx + 1) * self.world_size
++        # Log metrics
++        if self.local_rank == 0:
++            if entropy_count > 0:
++                average_entropy = entropy_sum / entropy_count
++                print(f'Average Entropy: {average_entropy:.4f}')
++            
++            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f}')
++            wandb.log({
++                f"epoch_{phase}": epoch,
++                f"loss_{phase}": total_loss,
++            }) 
++        return total_loss
++            
++
++    def save_checkpoint(self, epoch, val_loss, suffix=''):
++        checkpoint = {
++            'epoch': epoch,
++            'val_loss': val_loss,
++            'state_dict': self.get_net().state_dict()
++        }
++        path = self.model_path if not suffix else self.model_path.replace('.pth', f'_{suffix}.pth')
++        torch.save(checkpoint, path)
++
++    def train(self, epochs):
++        best_loss = -float('inf')
++    
++        for epoch in range(epochs):
++            # Set epoch for distributed samplers
++            if self.world_size > 1:
++                for phase in self.dataloaders:
++                    sampler = getattr(self.dataloaders[phase], 'sampler', None)
++                    if hasattr(sampler, 'set_epoch'):
++                        sampler.set_epoch(epoch)
++    
++            # Training phase (we ignore returned values here)
++            self.iterate(epoch, 'train')
++            if epoch % 5 == 0:
++                import time
++                start_time = time.time()
++                lda_accuracy = run_linear_probe_on_embeddings(
++                    self.dataloaders['complete_train'],
++                    self.dataloaders['val'],
++                    self.get_net(),
++                    use_amp=self.use_amp
++                )
++                
++                # Only rank 0 gets accuracy; others get None
++                if self.local_rank == 0 and lda_accuracy is not None:
++                    wandb.log({'lda_accuracy': lda_accuracy})
++                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
++                    print(f"Total time: {elapsed_time:.2f} minutes")
++
++
++    
++            # Save best model
++            if self.local_rank == 0:
++                if lda_accuracy > best_loss:
++                    best_loss = lda_accuracy
++                    print('Best val loss found')
++                    self.save_checkpoint(epoch, lda_accuracy)
++    
++                print()
++    
++        # Final save
++        if self.local_rank == 0:
++            self.save_checkpoint(epochs - 1, lda_accuracy, suffix='final')
++
++
++def setup(rank, world_size):
++    os.environ['MASTER_ADDR'] = 'localhost'
++    os.environ['MASTER_PORT'] = '12355'
++    
++    # Initialize the process group
++    dist.init_process_group("nccl", rank=rank, world_size=world_size)
++
++
++def cleanup():
++    dist.destroy_process_group()
++    
++def train_worker(rank, world_size, config):
++    import warnings
++    warnings.simplefilter(action='ignore', category=FutureWarning)
++    
++    class ClassBalancedBatchSampler(Sampler):
++        def __init__(self, dataset, k_classes: int, n_samples: int,
++                     world_size: int = 1, rank: int = 0, seed: int = 42):
++            """
++            Class-balanced batch sampler for distributed training.
++    
++            Args:
++                dataset: Dataset to sample from.
++                k_classes: Number of different classes in each batch.
++                n_samples: Number of samples per class.
++                world_size: Total number of distributed workers.
++                rank: Rank of the current worker.
++                seed: Random seed for reproducibility.
++            """
++            super().__init__(dataset)
++            self.dataset = dataset
++            self.k_classes = k_classes
++            self.n_samples = n_samples
++            self.world_size = world_size
++            self.rank = rank
++            self.seed = seed
++            self.epoch = 0  # Set externally before each epoch
++    
++            # Get target labels and build class-to-indices mapping
++            if isinstance(dataset, torch.utils.data.Subset):
++                indices = dataset.indices
++                targets = [dataset.dataset.targets[i] for i in indices]
++            else:
++                indices = range(len(dataset))
++                targets = dataset.targets
++    
++            self.class_to_indices = defaultdict(list)
++            for idx, label in zip(indices, targets):
++                self.class_to_indices[label].append(idx)
++    
++            # Filter out classes with insufficient samples
++            self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
++                                      if len(idxs) >= n_samples]
++            if len(self.available_classes) < k_classes:
++                raise ValueError(f"Need at least {k_classes} classes with ≥{n_samples} samples each, "
++                                 f"but only {len(self.available_classes)} are available.")
++    
++            # Estimate batches per epoch
++            total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
++            batch_size = k_classes * n_samples
++            print("total samples", total_samples)
++            print("batches per epoch", total_samples // batch_size)
++            self.batches_per_epoch = total_samples // batch_size
++    
++        def set_epoch(self, epoch: int):
++            self.epoch = epoch
++    
++        def __iter__(self):
++            rng = random.Random(self.seed + self.epoch + self.rank)
++            num_batches = 0
++            batch_size = self.k_classes * self.n_samples
++    
++            while num_batches < self.batches_per_epoch:
++                selected_classes = rng.sample(self.available_classes, self.k_classes)
++    
++                batch = np.empty(batch_size, dtype=int)
++                offset = 0
++                for cls in selected_classes:
++                    sampled_indices = rng.sample(self.class_to_indices[cls], self.n_samples)
++                    batch[offset:offset + self.n_samples] = sampled_indices
++                    offset += self.n_samples
++    
++                # Shard to the correct worker
++                if num_batches % self.world_size == self.rank:
++                    yield batch.tolist()
++    
++                num_batches += 1
++    
++        def __len__(self):
++            return self.batches_per_epoch // self.world_size
++
++            
++    # Configure CUDA
++    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'  # Help with fragmentation
++    
++    # Setup process group
++    setup(rank, world_size)
++    
++    # Set the device
++    torch.cuda.set_device(rank)
++    
++    # Initialize wandb only on rank 0
++    if rank == 0:
++        wandb.init(
++            project=config['wandb_project'],
++            entity=config['wandb_entity'],
++            group=config['wandb_group'],
++            config=config,  # Track configuration
++        )
++    
++    # Set seeds for reproducibility
++    seed = config['seed'] + rank  # Different seed per process
++    torch.manual_seed(seed)
++    np.random.seed(seed)
++    random.seed(seed)
++    
++    # Calculate effective batch size and adjust learning rate
++    global_batch_size = config['k_classes'] * config['n_samples'] * world_size
++    gradient_accumulation_steps = config.get('gradient_accumulation_steps', 1)
++    effective_batch_size = global_batch_size * gradient_accumulation_steps
++    base_lr = config.get('base_lr', 1e-3)
++    lr = base_lr#get_scaled_lr_sqrt(effective_batch_size, base_batch_size=config.get('base_batch_size', 128), base_lr=base_lr)
++    
++    if rank == 0:
++        print(f"Global batch size: {global_batch_size}")
++        print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++        print(f"Effective batch size: {effective_batch_size}")
++        print(f"Learning rate: {lr}")
++    
++    # Data loading code (same as original)
++    # ImageNet normalization
++    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
++                                     std=[0.229, 0.224, 0.225])
++
++    transform_train = transforms.Compose([
++        transforms.RandomResizedCrop(224),
++        transforms.RandomHorizontalFlip(),
++        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.IMAGENET),
++        transforms.ToTensor(),
++        normalize,
++    ])
++
++    transform_test = transforms.Compose([
++        transforms.Resize(256),
++        transforms.CenterCrop(224),
++        transforms.ToTensor(),
++        normalize,
++    ])
++    
++    
++     # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++
++
++
++    # Load the full datasets
++    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    
++    # Select 10 class indices (e.g., 10 random or specific ones)
++    selected_classes = list(range(100))  # or any 10 specific indices you want
++    
++    # Map class name to index
++    class_to_idx = trainset_full.class_to_idx
++    idx_to_class = {v: k for k, v in class_to_idx.items()}
++
++    
++    # Create a filter function
++    def filter_by_class(dataset, allowed_classes):
++        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
++        return Subset(dataset, indices)
++    
++    # Create filtered datasets
++    trainset = filter_by_class(trainset_full, selected_classes)
++    valset = filter_by_class(valset_full, selected_classes)
++    testset = filter_by_class(testset_full, selected_classes)
++
++    # Create subset
++    transit_size = int(1.0 * len(trainset))
++    indices = random.sample(range(len(trainset)), transit_size)
++    transit_subset = Subset(trainset, indices)
++
++    # Create distributed samplers
++    train_sampler = ClassBalancedBatchSampler(
++        dataset=trainset,
++        k_classes=config['k_classes'],
++        n_samples=config['n_samples'],
++        world_size=world_size,
++        rank=rank,
++        seed=config['seed']
++    )
++
++
++    val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
++    test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
++    complete_train_sampler = DistributedSampler(transit_subset, num_replicas=world_size, rank=rank, shuffle=False)
++    
++
++    # Create dataloaders
++    trainloader = torch.utils.data.DataLoader(
++        trainset,
++        batch_sampler=train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++        #persistent_workers=False
++    )
++
++    
++    valloader = torch.utils.data.DataLoader(
++        valset, 
++        batch_size=config['batch_size'],
++        sampler=val_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++    
++    testloader = torch.utils.data.DataLoader(
++        testset, 
++        batch_size=config['batch_size'],
++        sampler=test_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++        
++    complete_train_loader = torch.utils.data.DataLoader(
++        transit_subset, 
++        batch_size=config['batch_size'],
++        sampler=complete_train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++
++    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader, 'complete_train':complete_train_loader}
++    
++    if config['loss'] == 'LDA':
++        lda_args = {'lamb': config['lamb'], 'n_eig': config['n_eig'], 'margin': config['margin']}
++    else:
++        lda_args = {}
++        
++    # Create solver with optimized parameters
++    solver = Solver(
++        dataloaders=dataloaders, 
++        model_path=config['model_path'],
++        n_classes=config['n_classes'],
++        lda_args=lda_args if config['loss'] == 'LDA' else {},
++        local_rank=rank,
++        world_size=world_size,
++        lr=lr,
++        gradient_accumulation_steps=gradient_accumulation_steps,
++        use_amp=config.get('use_amp', True),
++        use_checkpoint=config.get('use_checkpointing', True)
++    )
++    
++    # Train
++    solver.train(config['epochs'])
++    
++    # Test
++    solver.test()
++    
++    # Clean up
++    cleanup()
++
++
++if __name__ == '__main__':
++    # Configuration with memory optimizations
++    config = {
++        'wandb_project': "DELETEME_small",
++        'wandb_entity': "gerardo-pastrana-c3-ai",
++        'wandb_group': "gapLoss",
++        'seed': 42,
++        'n_classes': 100,
++        'train_val_split': 0.1,
++        'batch_size': 1024,  # Global batch size
++        'num_workers': 1,  # Adjust based on CPU cores
++        'train_dir': '/data/datasets/imagenet_full_size/061417/train',
++        'val_dir': '/data/datasets/imagenet_full_size/061417/val',
++        'test_dir': '/data/datasets/imagenet_full_size/061417/test',
++        'model_path': 'models/deeplda_best.pth',
++        'loss': 'LDA',
++        'lamb': 0.0002,
++        'n_eig': 4,
++        'margin': None,
++        'epochs': 50,
++        'k_classes': 100,
++        'n_samples': 64, #32
++        # Memory optimization parameters
++        'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
++        'use_amp': True,                   # Use automatic mixed precision
++        'use_checkpointing': True,         # Use gradient checkpointing
++        'base_lr': 1e-3,                   # Base learning rate
++        'base_batch_size': 128,            # Reference batch size for LR scaling
++        'cuda_visible_devices': '',        # Optional GPU restrictions
++    }
++    
++    # Number of available GPUs
++    n_gpus = torch.cuda.device_count()
++    print(f"Using {n_gpus} GPUs")
++    
++    # Launch processes
++    mp.spawn(
++        train_worker,
++        args=(n_gpus, config),
++        nprocs=n_gpus,
++        join=True
++    )
+\ No newline at end of file
+diff --git a/wandb/run-20250519_011132-37tte9ls/files/config.yaml b/wandb/run-20250519_011132-37tte9ls/files/config.yaml
+new file mode 100644
+index 0000000..eca0d37
+--- /dev/null
++++ b/wandb/run-20250519_011132-37tte9ls/files/config.yaml
+@@ -0,0 +1,80 @@
++_wandb:
++    value:
++        cli_version: 0.19.9
++        code_path: code/train.py
++        m: []
++        python_version: 3.11.4
++        t:
++            "1":
++                - 1
++                - 5
++                - 41
++                - 53
++                - 55
++            "2":
++                - 1
++                - 5
++                - 41
++                - 53
++                - 55
++            "3":
++                - 16
++                - 23
++                - 55
++            "4": 3.11.4
++            "5": 0.19.9
++            "8":
++                - 5
++                - 9
++            "12": 0.19.9
++            "13": linux-x86_64
++base_batch_size:
++    value: 128
++base_lr:
++    value: 0.001
++batch_size:
++    value: 1024
++cuda_visible_devices:
++    value: ""
++epochs:
++    value: 50
++gradient_accumulation_steps:
++    value: 1
++k_classes:
++    value: 100
++lamb:
++    value: 0.0002
++loss:
++    value: LDA
++margin:
++    value: null
++model_path:
++    value: models/deeplda_best.pth
++n_classes:
++    value: 100
++n_eig:
++    value: 4
++n_samples:
++    value: 64
++num_workers:
++    value: 1
++seed:
++    value: 42
++test_dir:
++    value: /data/datasets/imagenet_full_size/061417/test
++train_dir:
++    value: /data/datasets/imagenet_full_size/061417/train
++train_val_split:
++    value: 0.1
++use_amp:
++    value: true
++use_checkpointing:
++    value: true
++val_dir:
++    value: /data/datasets/imagenet_full_size/061417/val
++wandb_entity:
++    value: gerardo-pastrana-c3-ai
++wandb_group:
++    value: gapLoss
++wandb_project:
++    value: DELETEME_small
+diff --git a/wandb/run-20250519_011132-37tte9ls/files/diff.patch b/wandb/run-20250519_011132-37tte9ls/files/diff.patch
+new file mode 100644
+index 0000000..f63b002
+--- /dev/null
++++ b/wandb/run-20250519_011132-37tte9ls/files/diff.patch
+@@ -0,0 +1,37 @@
++diff --git a/lda.py b/lda.py
++index 93316df..224e09e 100644
++--- a/lda.py
+++++ b/lda.py
++@@ -50,14 +50,15 @@ def lda(X, y, n_classes, lamb):
++         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
++ 
++     #Sb = St - Sw
++-    mu = torch.trace(Sw) / D # 1.0 / D #
++-    shrinkage = 0.1 # 1- torch.trace(Sw) 
++-    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    # mu = torch.trace(Sw) / D # 1.0 / D #
+++    # shrinkage = 0.1 # 1- torch.trace(Sw) 
+++    # Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++     
++     # add mean? add something to Sw_reg?
++     #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
++-    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++-    temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+++    Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    Sb_reg = Sb + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb * 0.1
+++    temp = torch.linalg.solve(Sw_reg, Sb_reg) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
++     #temp = (temp + temp.T) / 2
++     
++     return Xc_mean, temp, Sw, Sb, St
++diff --git a/wandb/latest-run b/wandb/latest-run
++index 69bd6ff..c5b187c 120000
++--- a/wandb/latest-run
+++++ b/wandb/latest-run
++@@ -1 +1 @@
++-run-20250518_202241-r3faoyl2
++\ No newline at end of file
+++run-20250519_011132-37tte9ls
++\ No newline at end of file
++diff --git a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb
++index eb78a2b..fb7641a 100644
++Binary files a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb and b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb differ
+diff --git a/wandb/run-20250519_011132-37tte9ls/files/requirements.txt b/wandb/run-20250519_011132-37tte9ls/files/requirements.txt
+new file mode 100644
+index 0000000..95994b0
+--- /dev/null
++++ b/wandb/run-20250519_011132-37tte9ls/files/requirements.txt
+@@ -0,0 +1,84 @@
++GitPython==3.1.44
++charset-normalizer==3.4.1
++platformdirs==4.3.7
++nvidia-nccl-cu12==2.21.5
++nvidia-cusparselt-cu12==0.6.2
++smmap==5.0.2
++zope.deprecation==5.1
++setproctitle==1.3.5
++plaster-pastedeploy==1.0.1
++sentry-sdk==2.26.1
++click==8.1.8
++numpy==2.0.2
++fsspec==2025.3.2
++pydantic==2.11.3
++nvidia-cuda-cupti-cu12==12.4.127
++certifi==2025.1.31
++mpmath==1.3.0
++urllib3==2.4.0
++MarkupSafe==3.0.2
++pydantic_core==2.33.1
++typing-inspection==0.4.0
++WebOb==1.8.9
++gitdb==4.0.12
++annotated-types==0.7.0
++nvidia-cufft-cu12==11.2.1.3
++torchvision==0.21.0
++google==3.0.0
++translationstring==1.4
++nvidia-cuda-runtime-cu12==12.4.127
++psutil==7.0.0
++idna==3.10
++typing_extensions==4.13.2
++scipy==1.13.1
++requests==2.32.3
++nvidia-nvtx-cu12==12.4.127
++networkx==3.2.1
++nvidia-curand-cu12==10.3.5.147
++nvidia-cusolver-cu12==11.6.1.9
++pip==25.0.1
++nvidia-nvjitlink-cu12==12.4.127
++six==1.17.0
++scikit-learn==1.6.1
++triton==3.2.0
++setuptools==78.1.0
++sympy==1.13.1
++plaster==1.1.2
++nvidia-cusparse-cu12==12.3.1.170
++beautifulsoup4==4.13.4
++venusian==3.1.1
++zope.interface==7.2
++wandb==0.19.9
++tqdm==4.67.1
++nvidia-cuda-nvrtc-cu12==12.4.127
++PyYAML==6.0.2
++hupper==1.12.1
++joblib==1.4.2
++Jinja2==3.1.6
++protobuf==3.20.3
++soupsieve==2.7
++nvidia-cudnn-cu12==9.1.0.70
++pyramid==2.0.2
++filelock==3.18.0
++nvidia-cublas-cu12==12.4.5.8
++pillow==11.2.1
++PasteDeploy==3.1.0
++docker-pycreds==0.4.0
++torch==2.6.0
++threadpoolctl==3.6.0
++typing_extensions==4.12.2
++tomli==2.0.1
++importlib_metadata==8.0.0
++jaraco.functools==4.0.1
++more-itertools==10.3.0
++autocommand==2.2.2
++backports.tarfile==1.2.0
++jaraco.collections==5.1.0
++typeguard==4.3.0
++jaraco.context==5.3.0
++inflect==7.3.1
++packaging==24.2
++jaraco.text==3.12.1
++wheel==0.45.1
++platformdirs==4.2.2
++zipp==3.19.2
+diff --git a/wandb/run-20250519_011132-37tte9ls/files/wandb-metadata.json b/wandb/run-20250519_011132-37tte9ls/files/wandb-metadata.json
+new file mode 100644
+index 0000000..64e1e0f
+--- /dev/null
++++ b/wandb/run-20250519_011132-37tte9ls/files/wandb-metadata.json
+@@ -0,0 +1,60 @@
++{
++  "os": "Linux-5.15.146+-x86_64-with-glibc2.31",
++  "python": "CPython 3.11.4",
++  "startedAt": "2025-05-19T01:11:32.587054Z",
++  "program": "/workspace/Lidar/supervised_learning/train.py",
++  "codePath": "train.py",
++  "git": {
++    "remote": "https://github.com/c3-gerardopastrana/supervised_learning.git",
++    "commit": "d1e21e78a5d4b4214c9f4fb53b3817babd76dd5b"
++  },
++  "email": "utsavdutta98@gmail.com",
++  "root": "/workspace/Lidar/supervised_learning",
++  "host": "finetuning-80gb-4-5-59d4d9d89f-rtctb",
++  "executable": "/root/.cache/pypoetry/virtualenvs/deeplda-project-lMrMy_DZ-py3.11/bin/python",
++  "codePathLocal": "train.py",
++  "cpu_count": 48,
++  "cpu_count_logical": 96,
++  "gpu": "NVIDIA A100-SXM4-80GB",
++  "gpu_count": 4,
++  "disk": {
++    "/": {
++      "total": "3168432029696",
++      "used": "825354870784"
++    }
++  },
++  "memory": {
++    "total": "1437341159424"
++  },
++  "cpu": {
++    "count": 48,
++    "countLogical": 96
++  },
++  "gpu_nvidia": [
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    }
++  ],
++  "cudaVersion": "12.4"
++}
+\ No newline at end of file
+diff --git a/wandb/run-20250519_011132-37tte9ls/files/wandb-summary.json b/wandb/run-20250519_011132-37tte9ls/files/wandb-summary.json
+new file mode 100644
+index 0000000..5f92816
+--- /dev/null
++++ b/wandb/run-20250519_011132-37tte9ls/files/wandb-summary.json
+@@ -0,0 +1 @@
++{"sum_squared_off_diag":2.9498610496520996,"grad_norm":16.319032669067383,"entropy_t":1.4862462282180786,"max_diff":0.00013554096221923828,"_wandb":{"runtime":12463},"quantile_25":0.0018097448628395796,"complex_count":48,"loss":77.35629272460938,"_timestamp":1.7476295553367918e+09,"_runtime":12462.750148187,"mean_of_class_means_norms":0.8820679783821106,"epoch":49,"condition_sigma":112.0872573852539,"entropy_w":1.4675620794296265,"std_of_class_mean_norms":0.03597691282629967,"entropy_b":1.550709843635559,"sum_squared_off_diag_w":0.019408810883760452,"loss_train":65.805517578125,"diag_var":0.00031046601361595094,"epoch_train":49,"trace_sigma":53.12200164794922,"min_eigval_norm":0.0005223703337833285,"distance_of_mean_class_means_origin":0.8414372801780701,"quantile_50":0.0020629363134503365,"trace_w":0.2242194414138794,"diag_var_b":0.00031046601361595094,"max_eigval_norm":0.015459139831364155,"rank_sigma":512,"sum_squared_off_diag_b":0.0015472678933292627,"_step":109,"diag_var_w":0.00031046601361595094,"quantile_75":0.002335822209715843,"lda_accuracy":7.86,"trace_b":0.07130962610244751,"entropy":6.080981731414795}
+\ No newline at end of file
+diff --git a/wandb/run-20250519_011132-37tte9ls/run-37tte9ls.wandb b/wandb/run-20250519_011132-37tte9ls/run-37tte9ls.wandb
+new file mode 100644
+index 0000000..c898738
+Binary files /dev/null and b/wandb/run-20250519_011132-37tte9ls/run-37tte9ls.wandb differ
+diff --git a/wandb/run-20250519_050417-fa7nby7l/files/code/train.py b/wandb/run-20250519_050417-fa7nby7l/files/code/train.py
+new file mode 100644
+index 0000000..f674700
+--- /dev/null
++++ b/wandb/run-20250519_050417-fa7nby7l/files/code/train.py
+@@ -0,0 +1,528 @@
++import os
++import random
++import gc
++from collections import defaultdict
++from functools import partial
++
++import numpy as np
++np.set_printoptions(precision=4, suppress=True)
++
++from PIL import Image
++from tqdm.notebook import tqdm
++from sklearn.metrics import accuracy_score
++
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++import torch.optim as optim
++import torch.distributed as dist
++import torch.multiprocessing as mp
++from torch.nn.parallel import DistributedDataParallel as DDP
++from torch.utils.checkpoint import checkpoint, checkpoint_sequential
++from torch.utils.data import DataLoader, random_split, Sampler, Subset
++from torch.utils.data.distributed import DistributedSampler
++
++import torchvision
++from torchvision import transforms, datasets
++
++import wandb
++
++from lda import LDA, lda_loss, sina_loss, SphericalLDA
++from models import ResNet, BasicBlock
++from utils import compute_wandb_metrics
++from eval import run_linear_probe_on_embeddings
++
++def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
++    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
++
++
++class Solver:
++    def __init__(self, dataloaders, model_path, n_classes, lda_args={}, local_rank=0, world_size=1, lr=1e-3, 
++                 gradient_accumulation_steps=1, use_amp=True, use_checkpoint=True):
++        self.dataloaders = dataloaders
++        self.local_rank = local_rank
++        self.world_size = world_size
++        self.device = torch.device(f'cuda:{local_rank}')
++        self.gradient_accumulation_steps = gradient_accumulation_steps
++        self.use_amp = use_amp
++        
++        # Create model with checkpointing enabled
++        self.net = ResNet18(n_classes, lda_args, use_checkpoint=use_checkpoint)
++        self.net = self.net.to(self.device)
++        
++        # Wrap model with DDP
++        if world_size > 1:
++            self.net = DDP(self.net, device_ids=[local_rank], output_device=local_rank,
++                           find_unused_parameters=False)  # Set to True only if needed
++        
++        self.use_lda = True if lda_args else False
++        if self.use_lda:
++            self.criterion = sina_loss 
++        else:
++            self.criterion = nn.CrossEntropyLoss()
++        
++        if local_rank == 0:
++            print(f"Using criterion: {self.criterion}")
++            print(f"Using checkpoint: {use_checkpoint}")
++            print(f"Using mixed precision: {use_amp}")
++            print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++
++        self.optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=5e-4)
++        self.scaler = torch.amp.GradScaler(enabled=use_amp)
++        self.model_path = model_path
++        self.n_classes = n_classes
++
++    def get_net(self):
++        return self.net.module if isinstance(self.net, DDP) else self.net
++
++    def handle_lda(self, inputs, targets, epoch, batch_idx):
++        net = self.get_net()
++        xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
++     
++    
++        
++        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
++    
++        if self.local_rank == 0 and batch_idx % 5==0:
++            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t)
++            wandb.log(metrics, commit=False)
++            wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
++    
++        return loss, sigma_w_inv_b
++
++    def iterate(self, epoch, phase):
++        get_net = self.get_net()
++        get_net.train(phase == 'train')
++    
++        dataloader = self.dataloaders[phase]
++        total_loss = 0
++        correct = 0
++        total = 0
++        entropy_sum = 0.0
++        entropy_count = 0
++    
++        torch.cuda.empty_cache()
++        gc.collect()
++    
++        for batch_idx, (inputs, targets) in enumerate(dataloader):
++            inputs = inputs.to(self.device, non_blocking=True)
++            targets = targets.to(self.device, non_blocking=True)
++    
++            if phase == 'train':
++                self.optimizer.zero_grad(set_to_none=True)
++                with torch.cuda.amp.autocast(enabled=self.use_amp):
++                    if self.use_lda:
++                        loss, sigma_w_inv_b = self.handle_lda(inputs, targets, epoch, batch_idx)
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++                self.scaler.scale(loss).backward()
++                self.scaler.unscale_(self.optimizer)
++                grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=5.0)
++                self.scaler.step(self.optimizer)
++                self.scaler.update()
++    
++                if self.local_rank == 0 and batch_idx % 5==0:
++                    wandb.log({"grad_norm": grad_norm.item()})
++            else:
++                with torch.no_grad():
++                    if self.use_lda:
++                        result = self.handle_lda(inputs, targets, epoch, batch_idx)
++                        raise NotImplementedError("handle_lda is not implemented yet")
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++            total_loss += loss.item()
++            total += targets.size(0)
++    
++            del inputs, targets
++            if self.use_lda and phase == 'train':
++                del sigma_w_inv_b
++            torch.cuda.empty_cache()
++    
++            
++        # Sync metrics across GPUs
++        if self.world_size > 1:
++            metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
++            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
++            total_loss = metrics.item()
++
++            
++        total_loss /= (batch_idx + 1) * self.world_size
++        # Log metrics
++        if self.local_rank == 0:
++            if entropy_count > 0:
++                average_entropy = entropy_sum / entropy_count
++                print(f'Average Entropy: {average_entropy:.4f}')
++            
++            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f}')
++            wandb.log({
++                f"epoch_{phase}": epoch,
++                f"loss_{phase}": total_loss,
++            }) 
++        return total_loss
++            
++
++    def save_checkpoint(self, epoch, val_loss, suffix=''):
++        checkpoint = {
++            'epoch': epoch,
++            'val_loss': val_loss,
++            'state_dict': self.get_net().state_dict()
++        }
++        path = self.model_path if not suffix else self.model_path.replace('.pth', f'_{suffix}.pth')
++        torch.save(checkpoint, path)
++
++    def train(self, epochs):
++        best_loss = -float('inf')
++    
++        for epoch in range(epochs):
++            # Set epoch for distributed samplers
++            if self.world_size > 1:
++                for phase in self.dataloaders:
++                    sampler = getattr(self.dataloaders[phase], 'sampler', None)
++                    if hasattr(sampler, 'set_epoch'):
++                        sampler.set_epoch(epoch)
++    
++            # Training phase (we ignore returned values here)
++            self.iterate(epoch, 'train')
++            if epoch % 5 == 0:
++                import time
++                start_time = time.time()
++                lda_accuracy = run_linear_probe_on_embeddings(
++                    self.dataloaders['complete_train'],
++                    self.dataloaders['val'],
++                    self.get_net(),
++                    use_amp=self.use_amp
++                )
++                
++                # Only rank 0 gets accuracy; others get None
++                if self.local_rank == 0 and lda_accuracy is not None:
++                    wandb.log({'lda_accuracy': lda_accuracy})
++                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
++                    print(f"Total time: {elapsed_time:.2f} minutes")
++
++
++    
++            # Save best model
++            if self.local_rank == 0:
++                if lda_accuracy > best_loss:
++                    best_loss = lda_accuracy
++                    print('Best val loss found')
++                    self.save_checkpoint(epoch, lda_accuracy)
++    
++                print()
++    
++        # Final save
++        if self.local_rank == 0:
++            self.save_checkpoint(epochs - 1, lda_accuracy, suffix='final')
++
++
++def setup(rank, world_size):
++    os.environ['MASTER_ADDR'] = 'localhost'
++    os.environ['MASTER_PORT'] = '12355'
++    
++    # Initialize the process group
++    dist.init_process_group("nccl", rank=rank, world_size=world_size)
++
++
++def cleanup():
++    dist.destroy_process_group()
++    
++def train_worker(rank, world_size, config):
++    import warnings
++    warnings.simplefilter(action='ignore', category=FutureWarning)
++    
++    class ClassBalancedBatchSampler(Sampler):
++        def __init__(self, dataset, k_classes: int, n_samples: int,
++                     world_size: int = 1, rank: int = 0, seed: int = 42):
++            """
++            Class-balanced batch sampler for distributed training.
++    
++            Args:
++                dataset: Dataset to sample from.
++                k_classes: Number of different classes in each batch.
++                n_samples: Number of samples per class.
++                world_size: Total number of distributed workers.
++                rank: Rank of the current worker.
++                seed: Random seed for reproducibility.
++            """
++            super().__init__(dataset)
++            self.dataset = dataset
++            self.k_classes = k_classes
++            self.n_samples = n_samples
++            self.world_size = world_size
++            self.rank = rank
++            self.seed = seed
++            self.epoch = 0  # Set externally before each epoch
++    
++            # Get target labels and build class-to-indices mapping
++            if isinstance(dataset, torch.utils.data.Subset):
++                indices = dataset.indices
++                targets = [dataset.dataset.targets[i] for i in indices]
++            else:
++                indices = range(len(dataset))
++                targets = dataset.targets
++    
++            self.class_to_indices = defaultdict(list)
++            for idx, label in zip(indices, targets):
++                self.class_to_indices[label].append(idx)
++    
++            # Filter out classes with insufficient samples
++            self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
++                                      if len(idxs) >= n_samples]
++            if len(self.available_classes) < k_classes:
++                raise ValueError(f"Need at least {k_classes} classes with ≥{n_samples} samples each, "
++                                 f"but only {len(self.available_classes)} are available.")
++    
++            # Estimate batches per epoch
++            total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
++            batch_size = k_classes * n_samples
++            print("total samples", total_samples)
++            print("batches per epoch", total_samples // batch_size)
++            self.batches_per_epoch = total_samples // batch_size
++    
++        def set_epoch(self, epoch: int):
++            self.epoch = epoch
++    
++        def __iter__(self):
++            rng = random.Random(self.seed + self.epoch + self.rank)
++            num_batches = 0
++            batch_size = self.k_classes * self.n_samples
++    
++            while num_batches < self.batches_per_epoch:
++                selected_classes = rng.sample(self.available_classes, self.k_classes)
++    
++                batch = np.empty(batch_size, dtype=int)
++                offset = 0
++                for cls in selected_classes:
++                    sampled_indices = rng.sample(self.class_to_indices[cls], self.n_samples)
++                    batch[offset:offset + self.n_samples] = sampled_indices
++                    offset += self.n_samples
++    
++                # Shard to the correct worker
++                if num_batches % self.world_size == self.rank:
++                    yield batch.tolist()
++    
++                num_batches += 1
++    
++        def __len__(self):
++            return self.batches_per_epoch // self.world_size
++
++            
++    # Configure CUDA
++    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'  # Help with fragmentation
++    
++    # Setup process group
++    setup(rank, world_size)
++    
++    # Set the device
++    torch.cuda.set_device(rank)
++    
++    # Initialize wandb only on rank 0
++    if rank == 0:
++        wandb.init(
++            project=config['wandb_project'],
++            entity=config['wandb_entity'],
++            group=config['wandb_group'],
++            config=config,  # Track configuration
++        )
++    
++    # Set seeds for reproducibility
++    seed = config['seed'] + rank  # Different seed per process
++    torch.manual_seed(seed)
++    np.random.seed(seed)
++    random.seed(seed)
++    
++    # Calculate effective batch size and adjust learning rate
++    global_batch_size = config['k_classes'] * config['n_samples'] * world_size
++    gradient_accumulation_steps = config.get('gradient_accumulation_steps', 1)
++    effective_batch_size = global_batch_size * gradient_accumulation_steps
++    base_lr = config.get('base_lr', 1e-3)
++    lr = base_lr#get_scaled_lr_sqrt(effective_batch_size, base_batch_size=config.get('base_batch_size', 128), base_lr=base_lr)
++    
++    if rank == 0:
++        print(f"Global batch size: {global_batch_size}")
++        print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++        print(f"Effective batch size: {effective_batch_size}")
++        print(f"Learning rate: {lr}")
++    
++    # Data loading code (same as original)
++    # ImageNet normalization
++    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
++                                     std=[0.229, 0.224, 0.225])
++
++    transform_train = transforms.Compose([
++        transforms.RandomResizedCrop(224),
++        transforms.RandomHorizontalFlip(),
++        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.IMAGENET),
++        transforms.ToTensor(),
++        normalize,
++    ])
++
++    transform_test = transforms.Compose([
++        transforms.Resize(256),
++        transforms.CenterCrop(224),
++        transforms.ToTensor(),
++        normalize,
++    ])
++    
++    
++     # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++
++
++
++    # Load the full datasets
++    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    
++    # Select 10 class indices (e.g., 10 random or specific ones)
++    selected_classes = list(range(100))  # or any 10 specific indices you want
++    
++    # Map class name to index
++    class_to_idx = trainset_full.class_to_idx
++    idx_to_class = {v: k for k, v in class_to_idx.items()}
++
++    
++    # Create a filter function
++    def filter_by_class(dataset, allowed_classes):
++        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
++        return Subset(dataset, indices)
++    
++    # Create filtered datasets
++    trainset = filter_by_class(trainset_full, selected_classes)
++    valset = filter_by_class(valset_full, selected_classes)
++    testset = filter_by_class(testset_full, selected_classes)
++
++    # Create subset
++    transit_size = int(1.0 * len(trainset))
++    indices = random.sample(range(len(trainset)), transit_size)
++    transit_subset = Subset(trainset, indices)
++
++    # Create distributed samplers
++    train_sampler = ClassBalancedBatchSampler(
++        dataset=trainset,
++        k_classes=config['k_classes'],
++        n_samples=config['n_samples'],
++        world_size=world_size,
++        rank=rank,
++        seed=config['seed']
++    )
++
++
++    val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
++    test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
++    complete_train_sampler = DistributedSampler(transit_subset, num_replicas=world_size, rank=rank, shuffle=False)
++    
++
++    # Create dataloaders
++    trainloader = torch.utils.data.DataLoader(
++        trainset,
++        batch_sampler=train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++        #persistent_workers=False
++    )
++
++    
++    valloader = torch.utils.data.DataLoader(
++        valset, 
++        batch_size=config['batch_size'],
++        sampler=val_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++    
++    testloader = torch.utils.data.DataLoader(
++        testset, 
++        batch_size=config['batch_size'],
++        sampler=test_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++        
++    complete_train_loader = torch.utils.data.DataLoader(
++        transit_subset, 
++        batch_size=config['batch_size'],
++        sampler=complete_train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++
++    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader, 'complete_train':complete_train_loader}
++    
++    if config['loss'] == 'LDA':
++        lda_args = {'lamb': config['lamb'], 'n_eig': config['n_eig'], 'margin': config['margin']}
++    else:
++        lda_args = {}
++        
++    # Create solver with optimized parameters
++    solver = Solver(
++        dataloaders=dataloaders, 
++        model_path=config['model_path'],
++        n_classes=config['n_classes'],
++        lda_args=lda_args if config['loss'] == 'LDA' else {},
++        local_rank=rank,
++        world_size=world_size,
++        lr=lr,
++        gradient_accumulation_steps=gradient_accumulation_steps,
++        use_amp=config.get('use_amp', True),
++        use_checkpoint=config.get('use_checkpointing', True)
++    )
++    
++    # Train
++    solver.train(config['epochs'])
++    
++    # Test
++    solver.test()
++    
++    # Clean up
++    cleanup()
++
++
++if __name__ == '__main__':
++    # Configuration with memory optimizations
++    config = {
++        'wandb_project': "DELETEME_small",
++        'wandb_entity': "gerardo-pastrana-c3-ai",
++        'wandb_group': "gapLoss",
++        'seed': 42,
++        'n_classes': 100,
++        'train_val_split': 0.1,
++        'batch_size': 1024,  # Global batch size
++        'num_workers': 1,  # Adjust based on CPU cores
++        'train_dir': '/data/datasets/imagenet_full_size/061417/train',
++        'val_dir': '/data/datasets/imagenet_full_size/061417/val',
++        'test_dir': '/data/datasets/imagenet_full_size/061417/test',
++        'model_path': 'models/deeplda_best.pth',
++        'loss': 'LDA',
++        'lamb': 0.0002,
++        'n_eig': 4,
++        'margin': None,
++        'epochs': 50,
++        'k_classes': 100,
++        'n_samples': 64, #32
++        # Memory optimization parameters
++        'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
++        'use_amp': True,                   # Use automatic mixed precision
++        'use_checkpointing': True,         # Use gradient checkpointing
++        'base_lr': 1e-3,                   # Base learning rate
++        'base_batch_size': 128,            # Reference batch size for LR scaling
++        'cuda_visible_devices': '',        # Optional GPU restrictions
++    }
++    
++    # Number of available GPUs
++    n_gpus = torch.cuda.device_count()
++    print(f"Using {n_gpus} GPUs")
++    
++    # Launch processes
++    mp.spawn(
++        train_worker,
++        args=(n_gpus, config),
++        nprocs=n_gpus,
++        join=True
++    )
+\ No newline at end of file
+diff --git a/wandb/run-20250519_050417-fa7nby7l/files/diff.patch b/wandb/run-20250519_050417-fa7nby7l/files/diff.patch
+new file mode 100644
+index 0000000..02707ee
+--- /dev/null
++++ b/wandb/run-20250519_050417-fa7nby7l/files/diff.patch
+@@ -0,0 +1,53 @@
++diff --git a/lda.py b/lda.py
++index 93316df..84b1afa 100644
++--- a/lda.py
+++++ b/lda.py
++@@ -50,14 +50,31 @@ def lda(X, y, n_classes, lamb):
++         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
++ 
++     #Sb = St - Sw
++-    mu = torch.trace(Sw) / D # 1.0 / D #
++-    shrinkage = 0.1 # 1- torch.trace(Sw) 
++-    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    # mu = torch.trace(Sw) / D # 1.0 / D #
+++    # shrinkage = 0.1 # 1- torch.trace(Sw) 
+++    # Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++     
++     # add mean? add something to Sw_reg?
++     #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
++-    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++-    temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+++    # Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    # Sb_reg = Sb + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb * 0.1
+++    epsilon = 0.1  # adjust as needed
+++    tau = torch.trace(St) / D  # or set to 1.0 / D for unit norm
+++    
+++    # Total trace
+++    tr_Sw = torch.trace(Sw)
+++    tr_Sb = torch.trace(Sb)
+++    tr_St = tr_Sw + tr_Sb
+++    alpha_w = tr_Sw / tr_St
+++    alpha_b = tr_Sb / tr_St
+++    
+++    eye = torch.eye(D, dtype=X.dtype, device=X.device)
+++    
+++    Sw_reg = (1 - epsilon) * Sw + epsilon * alpha_w * tau * eye
+++    Sb_reg = (1 - epsilon) * Sb + epsilon * alpha_b * tau * eye
+++
+++    
+++    temp = torch.linalg.solve(Sw_reg, Sb_reg) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
++     #temp = (temp + temp.T) / 2
++     
++     return Xc_mean, temp, Sw, Sb, St
++diff --git a/wandb/latest-run b/wandb/latest-run
++index 69bd6ff..aaa8180 120000
++--- a/wandb/latest-run
+++++ b/wandb/latest-run
++@@ -1 +1 @@
++-run-20250518_202241-r3faoyl2
++\ No newline at end of file
+++run-20250519_050417-fa7nby7l
++\ No newline at end of file
++diff --git a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb
++index eb78a2b..fb7641a 100644
++Binary files a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb and b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb differ
+diff --git a/wandb/run-20250519_050417-fa7nby7l/files/requirements.txt b/wandb/run-20250519_050417-fa7nby7l/files/requirements.txt
+new file mode 100644
+index 0000000..95994b0
+--- /dev/null
++++ b/wandb/run-20250519_050417-fa7nby7l/files/requirements.txt
+@@ -0,0 +1,84 @@
++GitPython==3.1.44
++charset-normalizer==3.4.1
++platformdirs==4.3.7
++nvidia-nccl-cu12==2.21.5
++nvidia-cusparselt-cu12==0.6.2
++smmap==5.0.2
++zope.deprecation==5.1
++setproctitle==1.3.5
++plaster-pastedeploy==1.0.1
++sentry-sdk==2.26.1
++click==8.1.8
++numpy==2.0.2
++fsspec==2025.3.2
++pydantic==2.11.3
++nvidia-cuda-cupti-cu12==12.4.127
++certifi==2025.1.31
++mpmath==1.3.0
++urllib3==2.4.0
++MarkupSafe==3.0.2
++pydantic_core==2.33.1
++typing-inspection==0.4.0
++WebOb==1.8.9
++gitdb==4.0.12
++annotated-types==0.7.0
++nvidia-cufft-cu12==11.2.1.3
++torchvision==0.21.0
++google==3.0.0
++translationstring==1.4
++nvidia-cuda-runtime-cu12==12.4.127
++psutil==7.0.0
++idna==3.10
++typing_extensions==4.13.2
++scipy==1.13.1
++requests==2.32.3
++nvidia-nvtx-cu12==12.4.127
++networkx==3.2.1
++nvidia-curand-cu12==10.3.5.147
++nvidia-cusolver-cu12==11.6.1.9
++pip==25.0.1
++nvidia-nvjitlink-cu12==12.4.127
++six==1.17.0
++scikit-learn==1.6.1
++triton==3.2.0
++setuptools==78.1.0
++sympy==1.13.1
++plaster==1.1.2
++nvidia-cusparse-cu12==12.3.1.170
++beautifulsoup4==4.13.4
++venusian==3.1.1
++zope.interface==7.2
++wandb==0.19.9
++tqdm==4.67.1
++nvidia-cuda-nvrtc-cu12==12.4.127
++PyYAML==6.0.2
++hupper==1.12.1
++joblib==1.4.2
++Jinja2==3.1.6
++protobuf==3.20.3
++soupsieve==2.7
++nvidia-cudnn-cu12==9.1.0.70
++pyramid==2.0.2
++filelock==3.18.0
++nvidia-cublas-cu12==12.4.5.8
++pillow==11.2.1
++PasteDeploy==3.1.0
++docker-pycreds==0.4.0
++torch==2.6.0
++threadpoolctl==3.6.0
++typing_extensions==4.12.2
++tomli==2.0.1
++importlib_metadata==8.0.0
++jaraco.functools==4.0.1
++more-itertools==10.3.0
++autocommand==2.2.2
++backports.tarfile==1.2.0
++jaraco.collections==5.1.0
++typeguard==4.3.0
++jaraco.context==5.3.0
++inflect==7.3.1
++packaging==24.2
++jaraco.text==3.12.1
++wheel==0.45.1
++platformdirs==4.2.2
++zipp==3.19.2
+diff --git a/wandb/run-20250519_050417-fa7nby7l/files/wandb-metadata.json b/wandb/run-20250519_050417-fa7nby7l/files/wandb-metadata.json
+new file mode 100644
+index 0000000..c7aca59
+--- /dev/null
++++ b/wandb/run-20250519_050417-fa7nby7l/files/wandb-metadata.json
+@@ -0,0 +1,60 @@
++{
++  "os": "Linux-5.15.146+-x86_64-with-glibc2.31",
++  "python": "CPython 3.11.4",
++  "startedAt": "2025-05-19T05:04:17.404272Z",
++  "program": "/workspace/Lidar/supervised_learning/train.py",
++  "codePath": "train.py",
++  "git": {
++    "remote": "https://github.com/c3-gerardopastrana/supervised_learning.git",
++    "commit": "d1e21e78a5d4b4214c9f4fb53b3817babd76dd5b"
++  },
++  "email": "utsavdutta98@gmail.com",
++  "root": "/workspace/Lidar/supervised_learning",
++  "host": "finetuning-80gb-4-5-59d4d9d89f-rtctb",
++  "executable": "/root/.cache/pypoetry/virtualenvs/deeplda-project-lMrMy_DZ-py3.11/bin/python",
++  "codePathLocal": "train.py",
++  "cpu_count": 48,
++  "cpu_count_logical": 96,
++  "gpu": "NVIDIA A100-SXM4-80GB",
++  "gpu_count": 4,
++  "disk": {
++    "/": {
++      "total": "3168432029696",
++      "used": "825358229504"
++    }
++  },
++  "memory": {
++    "total": "1437341159424"
++  },
++  "cpu": {
++    "count": 48,
++    "countLogical": 96
++  },
++  "gpu_nvidia": [
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    }
++  ],
++  "cudaVersion": "12.4"
++}
+\ No newline at end of file
+diff --git a/wandb/run-20250519_050417-fa7nby7l/run-fa7nby7l.wandb b/wandb/run-20250519_050417-fa7nby7l/run-fa7nby7l.wandb
+new file mode 100644
+index 0000000..f8c71f8
+Binary files /dev/null and b/wandb/run-20250519_050417-fa7nby7l/run-fa7nby7l.wandb differ
+diff --git a/wandb/run-20250519_051450-tfwo349y/files/code/train.py b/wandb/run-20250519_051450-tfwo349y/files/code/train.py
+new file mode 100644
+index 0000000..a757f67
+--- /dev/null
++++ b/wandb/run-20250519_051450-tfwo349y/files/code/train.py
+@@ -0,0 +1,528 @@
++import os
++import random
++import gc
++from collections import defaultdict
++from functools import partial
++
++import numpy as np
++np.set_printoptions(precision=4, suppress=True)
++
++from PIL import Image
++from tqdm.notebook import tqdm
++from sklearn.metrics import accuracy_score
++
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++import torch.optim as optim
++import torch.distributed as dist
++import torch.multiprocessing as mp
++from torch.nn.parallel import DistributedDataParallel as DDP
++from torch.utils.checkpoint import checkpoint, checkpoint_sequential
++from torch.utils.data import DataLoader, random_split, Sampler, Subset
++from torch.utils.data.distributed import DistributedSampler
++
++import torchvision
++from torchvision import transforms, datasets
++
++import wandb
++
++from lda import LDA, lda_loss, sina_loss, SphericalLDA
++from models import ResNet, BasicBlock
++from utils import compute_wandb_metrics
++from eval import run_linear_probe_on_embeddings
++
++def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
++    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
++
++
++class Solver:
++    def __init__(self, dataloaders, model_path, n_classes, lda_args={}, local_rank=0, world_size=1, lr=1e-3, 
++                 gradient_accumulation_steps=1, use_amp=True, use_checkpoint=True):
++        self.dataloaders = dataloaders
++        self.local_rank = local_rank
++        self.world_size = world_size
++        self.device = torch.device(f'cuda:{local_rank}')
++        self.gradient_accumulation_steps = gradient_accumulation_steps
++        self.use_amp = use_amp
++        
++        # Create model with checkpointing enabled
++        self.net = ResNet18(n_classes, lda_args, use_checkpoint=use_checkpoint)
++        self.net = self.net.to(self.device)
++        
++        # Wrap model with DDP
++        if world_size > 1:
++            self.net = DDP(self.net, device_ids=[local_rank], output_device=local_rank,
++                           find_unused_parameters=False)  # Set to True only if needed
++        
++        self.use_lda = True if lda_args else False
++        if self.use_lda:
++            self.criterion = sina_loss 
++        else:
++            self.criterion = nn.CrossEntropyLoss()
++        
++        if local_rank == 0:
++            print(f"Using criterion: {self.criterion}")
++            print(f"Using checkpoint: {use_checkpoint}")
++            print(f"Using mixed precision: {use_amp}")
++            print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++
++        self.optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=5e-4)
++        self.scaler = torch.amp.GradScaler(enabled=use_amp)
++        self.model_path = model_path
++        self.n_classes = n_classes
++
++    def get_net(self):
++        return self.net.module if isinstance(self.net, DDP) else self.net
++
++    def handle_lda(self, inputs, targets, epoch, batch_idx):
++        net = self.get_net()
++        xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
++     
++    
++        
++        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
++    
++        if self.local_rank == 0 and batch_idx % 5==0:
++            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t)
++            wandb.log(metrics, commit=False)
++            wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
++    
++        return loss, sigma_w_inv_b
++
++    def iterate(self, epoch, phase):
++        get_net = self.get_net()
++        get_net.train(phase == 'train')
++    
++        dataloader = self.dataloaders[phase]
++        total_loss = 0
++        correct = 0
++        total = 0
++        entropy_sum = 0.0
++        entropy_count = 0
++    
++        torch.cuda.empty_cache()
++        gc.collect()
++    
++        for batch_idx, (inputs, targets) in enumerate(dataloader):
++            inputs = inputs.to(self.device, non_blocking=True)
++            targets = targets.to(self.device, non_blocking=True)
++    
++            if phase == 'train':
++                self.optimizer.zero_grad(set_to_none=True)
++                with torch.cuda.amp.autocast(enabled=self.use_amp):
++                    if self.use_lda:
++                        loss, sigma_w_inv_b = self.handle_lda(inputs, targets, epoch, batch_idx)
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++                self.scaler.scale(loss).backward()
++                self.scaler.unscale_(self.optimizer)
++                grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=5.0)
++                self.scaler.step(self.optimizer)
++                self.scaler.update()
++    
++                if self.local_rank == 0 and batch_idx % 5==0:
++                    wandb.log({"grad_norm": grad_norm.item()})
++            else:
++                with torch.no_grad():
++                    if self.use_lda:
++                        result = self.handle_lda(inputs, targets, epoch, batch_idx)
++                        raise NotImplementedError("handle_lda is not implemented yet")
++                    else:
++                        outputs = get_net(inputs, targets, epoch)
++                        loss = self.criterion(outputs, targets)
++    
++            total_loss += loss.item()
++            total += targets.size(0)
++    
++            del inputs, targets
++            if self.use_lda and phase == 'train':
++                del sigma_w_inv_b
++            torch.cuda.empty_cache()
++    
++            
++        # Sync metrics across GPUs
++        if self.world_size > 1:
++            metrics = torch.tensor([total_loss], dtype=torch.float32, device=self.device)
++            dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
++            total_loss = metrics.item()
++
++            
++        total_loss /= (batch_idx + 1) * self.world_size
++        # Log metrics
++        if self.local_rank == 0:
++            if entropy_count > 0:
++                average_entropy = entropy_sum / entropy_count
++                print(f'Average Entropy: {average_entropy:.4f}')
++            
++            print(f'\nepoch {epoch}: {phase} loss: {total_loss:.3f}')
++            wandb.log({
++                f"epoch_{phase}": epoch,
++                f"loss_{phase}": total_loss,
++            }) 
++        return total_loss
++            
++
++    def save_checkpoint(self, epoch, val_loss, suffix=''):
++        checkpoint = {
++            'epoch': epoch,
++            'val_loss': val_loss,
++            'state_dict': self.get_net().state_dict()
++        }
++        path = self.model_path if not suffix else self.model_path.replace('.pth', f'_{suffix}.pth')
++        torch.save(checkpoint, path)
++
++    def train(self, epochs):
++        best_loss = -float('inf')
++    
++        for epoch in range(epochs):
++            # Set epoch for distributed samplers
++            if self.world_size > 1:
++                for phase in self.dataloaders:
++                    sampler = getattr(self.dataloaders[phase], 'sampler', None)
++                    if hasattr(sampler, 'set_epoch'):
++                        sampler.set_epoch(epoch)
++    
++            # Training phase (we ignore returned values here)
++            self.iterate(epoch, 'train')
++            if epoch % 5 == 0:
++                import time
++                start_time = time.time()
++                lda_accuracy = run_linear_probe_on_embeddings(
++                    self.dataloaders['complete_train'],
++                    self.dataloaders['val'],
++                    self.get_net(),
++                    use_amp=self.use_amp
++                )
++                
++                # Only rank 0 gets accuracy; others get None
++                if self.local_rank == 0 and lda_accuracy is not None:
++                    wandb.log({'lda_accuracy': lda_accuracy})
++                    elapsed_time = (time.time() - start_time) / 60  # convert to minutes
++                    print(f"Total time: {elapsed_time:.2f} minutes")
++
++
++    
++            # Save best model
++            if self.local_rank == 0:
++                if lda_accuracy > best_loss:
++                    best_loss = lda_accuracy
++                    print('Best val loss found')
++                    self.save_checkpoint(epoch, lda_accuracy)
++    
++                print()
++    
++        # Final save
++        if self.local_rank == 0:
++            self.save_checkpoint(epochs - 1, lda_accuracy, suffix='final')
++
++
++def setup(rank, world_size):
++    os.environ['MASTER_ADDR'] = 'localhost'
++    os.environ['MASTER_PORT'] = '12355'
++    
++    # Initialize the process group
++    dist.init_process_group("nccl", rank=rank, world_size=world_size)
++
++
++def cleanup():
++    dist.destroy_process_group()
++    
++def train_worker(rank, world_size, config):
++    import warnings
++    warnings.simplefilter(action='ignore', category=FutureWarning)
++    
++    class ClassBalancedBatchSampler(Sampler):
++        def __init__(self, dataset, k_classes: int, n_samples: int,
++                     world_size: int = 1, rank: int = 0, seed: int = 42):
++            """
++            Class-balanced batch sampler for distributed training.
++    
++            Args:
++                dataset: Dataset to sample from.
++                k_classes: Number of different classes in each batch.
++                n_samples: Number of samples per class.
++                world_size: Total number of distributed workers.
++                rank: Rank of the current worker.
++                seed: Random seed for reproducibility.
++            """
++            super().__init__(dataset)
++            self.dataset = dataset
++            self.k_classes = k_classes
++            self.n_samples = n_samples
++            self.world_size = world_size
++            self.rank = rank
++            self.seed = seed
++            self.epoch = 0  # Set externally before each epoch
++    
++            # Get target labels and build class-to-indices mapping
++            if isinstance(dataset, torch.utils.data.Subset):
++                indices = dataset.indices
++                targets = [dataset.dataset.targets[i] for i in indices]
++            else:
++                indices = range(len(dataset))
++                targets = dataset.targets
++    
++            self.class_to_indices = defaultdict(list)
++            for idx, label in zip(indices, targets):
++                self.class_to_indices[label].append(idx)
++    
++            # Filter out classes with insufficient samples
++            self.available_classes = [cls for cls, idxs in self.class_to_indices.items()
++                                      if len(idxs) >= n_samples]
++            if len(self.available_classes) < k_classes:
++                raise ValueError(f"Need at least {k_classes} classes with ≥{n_samples} samples each, "
++                                 f"but only {len(self.available_classes)} are available.")
++    
++            # Estimate batches per epoch
++            total_samples = sum(len(self.class_to_indices[cls]) for cls in self.available_classes)
++            batch_size = k_classes * n_samples
++            print("total samples", total_samples)
++            print("batches per epoch", total_samples // batch_size)
++            self.batches_per_epoch = total_samples // batch_size
++    
++        def set_epoch(self, epoch: int):
++            self.epoch = epoch
++    
++        def __iter__(self):
++            rng = random.Random(self.seed + self.epoch + self.rank)
++            num_batches = 0
++            batch_size = self.k_classes * self.n_samples
++    
++            while num_batches < self.batches_per_epoch:
++                selected_classes = rng.sample(self.available_classes, self.k_classes)
++    
++                batch = np.empty(batch_size, dtype=int)
++                offset = 0
++                for cls in selected_classes:
++                    sampled_indices = rng.sample(self.class_to_indices[cls], self.n_samples)
++                    batch[offset:offset + self.n_samples] = sampled_indices
++                    offset += self.n_samples
++    
++                # Shard to the correct worker
++                if num_batches % self.world_size == self.rank:
++                    yield batch.tolist()
++    
++                num_batches += 1
++    
++        def __len__(self):
++            return self.batches_per_epoch // self.world_size
++
++            
++    # Configure CUDA
++    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'  # Help with fragmentation
++    
++    # Setup process group
++    setup(rank, world_size)
++    
++    # Set the device
++    torch.cuda.set_device(rank)
++    
++    # Initialize wandb only on rank 0
++    if rank == 0:
++        wandb.init(
++            project=config['wandb_project'],
++            entity=config['wandb_entity'],
++            group=config['wandb_group'],
++            config=config,  # Track configuration
++        )
++    
++    # Set seeds for reproducibility
++    seed = config['seed'] + rank  # Different seed per process
++    torch.manual_seed(seed)
++    np.random.seed(seed)
++    random.seed(seed)
++    
++    # Calculate effective batch size and adjust learning rate
++    global_batch_size = config['k_classes'] * config['n_samples'] * world_size
++    gradient_accumulation_steps = config.get('gradient_accumulation_steps', 1)
++    effective_batch_size = global_batch_size * gradient_accumulation_steps
++    base_lr = config.get('base_lr', 1e-3)
++    lr = base_lr#get_scaled_lr_sqrt(effective_batch_size, base_batch_size=config.get('base_batch_size', 128), base_lr=base_lr)
++    
++    if rank == 0:
++        print(f"Global batch size: {global_batch_size}")
++        print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
++        print(f"Effective batch size: {effective_batch_size}")
++        print(f"Learning rate: {lr}")
++    
++    # Data loading code (same as original)
++    # ImageNet normalization
++    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
++                                     std=[0.229, 0.224, 0.225])
++
++    transform_train = transforms.Compose([
++        transforms.RandomResizedCrop(224),
++        transforms.RandomHorizontalFlip(),
++        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.IMAGENET),
++        transforms.ToTensor(),
++        normalize,
++    ])
++
++    transform_test = transforms.Compose([
++        transforms.Resize(256),
++        transforms.CenterCrop(224),
++        transforms.ToTensor(),
++        normalize,
++    ])
++    
++    
++     # trainset = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    # valset = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    # testset = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++
++
++
++    # Load the full datasets
++    trainset_full = datasets.ImageFolder(config['train_dir'], transform=transform_train)
++    valset_full = datasets.ImageFolder(config['val_dir'], transform=transform_test)
++    testset_full = datasets.ImageFolder(config['test_dir'], transform=transform_test)
++    
++    # Select 10 class indices (e.g., 10 random or specific ones)
++    selected_classes = list(range(100))  # or any 10 specific indices you want
++    
++    # Map class name to index
++    class_to_idx = trainset_full.class_to_idx
++    idx_to_class = {v: k for k, v in class_to_idx.items()}
++
++    
++    # Create a filter function
++    def filter_by_class(dataset, allowed_classes):
++        indices = [i for i, (_, label) in enumerate(dataset.samples) if label in allowed_classes]
++        return Subset(dataset, indices)
++    
++    # Create filtered datasets
++    trainset = filter_by_class(trainset_full, selected_classes)
++    valset = filter_by_class(valset_full, selected_classes)
++    testset = filter_by_class(testset_full, selected_classes)
++
++    # Create subset
++    transit_size = int(1.0 * len(trainset))
++    indices = random.sample(range(len(trainset)), transit_size)
++    transit_subset = Subset(trainset, indices)
++
++    # Create distributed samplers
++    train_sampler = ClassBalancedBatchSampler(
++        dataset=trainset,
++        k_classes=config['k_classes'],
++        n_samples=config['n_samples'],
++        world_size=world_size,
++        rank=rank,
++        seed=config['seed']
++    )
++
++
++    val_sampler = DistributedSampler(valset, num_replicas=world_size, rank=rank, shuffle=False)
++    test_sampler = DistributedSampler(testset, num_replicas=world_size, rank=rank, shuffle=False)
++    complete_train_sampler = DistributedSampler(transit_subset, num_replicas=world_size, rank=rank, shuffle=False)
++    
++
++    # Create dataloaders
++    trainloader = torch.utils.data.DataLoader(
++        trainset,
++        batch_sampler=train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++        #persistent_workers=False
++    )
++
++    
++    valloader = torch.utils.data.DataLoader(
++        valset, 
++        batch_size=config['batch_size'],
++        sampler=val_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++    
++    testloader = torch.utils.data.DataLoader(
++        testset, 
++        batch_size=config['batch_size'],
++        sampler=test_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++        
++    complete_train_loader = torch.utils.data.DataLoader(
++        transit_subset, 
++        batch_size=config['batch_size'],
++        sampler=complete_train_sampler,
++        num_workers=config['num_workers'],
++        pin_memory=True,
++    )
++
++    dataloaders = {'train': trainloader, 'val': valloader, 'test': testloader, 'complete_train':complete_train_loader}
++    
++    if config['loss'] == 'LDA':
++        lda_args = {'lamb': config['lamb'], 'n_eig': config['n_eig'], 'margin': config['margin']}
++    else:
++        lda_args = {}
++        
++    # Create solver with optimized parameters
++    solver = Solver(
++        dataloaders=dataloaders, 
++        model_path=config['model_path'],
++        n_classes=config['n_classes'],
++        lda_args=lda_args if config['loss'] == 'LDA' else {},
++        local_rank=rank,
++        world_size=world_size,
++        lr=lr,
++        gradient_accumulation_steps=gradient_accumulation_steps,
++        use_amp=config.get('use_amp', True),
++        use_checkpoint=config.get('use_checkpointing', True)
++    )
++    
++    # Train
++    solver.train(config['epochs'])
++    
++    # Test
++    solver.test()
++    
++    # Clean up
++    cleanup()
++
++
++if __name__ == '__main__':
++    # Configuration with memory optimizations
++    config = {
++        'wandb_project': "DELETEME_small",
++        'wandb_entity': "gerardo-pastrana-c3-ai",
++        'wandb_group': "gapLoss",
++        'seed': 42,
++        'n_classes': 100,
++        'train_val_split': 0.1,
++        'batch_size': 1024,  # Global batch size
++        'num_workers': 1,  # Adjust based on CPU cores
++        'train_dir': '/data/datasets/imagenet_full_size/061417/train',
++        'val_dir': '/data/datasets/imagenet_full_size/061417/val',
++        'test_dir': '/data/datasets/imagenet_full_size/061417/test',
++        'model_path': 'models/deeplda_best.pth',
++        'loss': 'LDA',
++        'lamb': 0.0002,
++        'n_eig': 4,
++        'margin': None,
++        'epochs': 50,
++        'k_classes': 16,
++        'n_samples': 64, #32
++        # Memory optimization parameters
++        'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
++        'use_amp': True,                   # Use automatic mixed precision
++        'use_checkpointing': True,         # Use gradient checkpointing
++        'base_lr': 1e-3,                   # Base learning rate
++        'base_batch_size': 128,            # Reference batch size for LR scaling
++        'cuda_visible_devices': '',        # Optional GPU restrictions
++    }
++    
++    # Number of available GPUs
++    n_gpus = torch.cuda.device_count()
++    print(f"Using {n_gpus} GPUs")
++    
++    # Launch processes
++    mp.spawn(
++        train_worker,
++        args=(n_gpus, config),
++        nprocs=n_gpus,
++        join=True
++    )
+\ No newline at end of file
+diff --git a/wandb/run-20250519_051450-tfwo349y/files/diff.patch b/wandb/run-20250519_051450-tfwo349y/files/diff.patch
+new file mode 100644
+index 0000000..a9d4329
+--- /dev/null
++++ b/wandb/run-20250519_051450-tfwo349y/files/diff.patch
+@@ -0,0 +1,66 @@
++diff --git a/lda.py b/lda.py
++index 93316df..84b1afa 100644
++--- a/lda.py
+++++ b/lda.py
++@@ -50,14 +50,31 @@ def lda(X, y, n_classes, lamb):
++         Sb += (Nc / N) * delta.t().matmul(delta)  # (D, D)
++ 
++     #Sb = St - Sw
++-    mu = torch.trace(Sw) / D # 1.0 / D #
++-    shrinkage = 0.1 # 1- torch.trace(Sw) 
++-    Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    # mu = torch.trace(Sw) / D # 1.0 / D #
+++    # shrinkage = 0.1 # 1- torch.trace(Sw) 
+++    # Sw_reg = (1-shrinkage) * Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * shrinkage * mu + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++     
++     # add mean? add something to Sw_reg?
++     #lambda_ = (1.0 / D) * (1 - torch.trace(Sw))
++-    #Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
++-    temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
+++    # Sw_reg = Sw + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb
+++    # Sb_reg = Sb + torch.eye(D, dtype=X.dtype, device=X.device, requires_grad=False) * lamb * 0.1
+++    epsilon = 0.1  # adjust as needed
+++    tau = torch.trace(St) / D  # or set to 1.0 / D for unit norm
+++    
+++    # Total trace
+++    tr_Sw = torch.trace(Sw)
+++    tr_Sb = torch.trace(Sb)
+++    tr_St = tr_Sw + tr_Sb
+++    alpha_w = tr_Sw / tr_St
+++    alpha_b = tr_Sb / tr_St
+++    
+++    eye = torch.eye(D, dtype=X.dtype, device=X.device)
+++    
+++    Sw_reg = (1 - epsilon) * Sw + epsilon * alpha_w * tau * eye
+++    Sb_reg = (1 - epsilon) * Sb + epsilon * alpha_b * tau * eye
+++
+++    
+++    temp = torch.linalg.solve(Sw_reg, Sb_reg) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
++     #temp = (temp + temp.T) / 2
++     
++     return Xc_mean, temp, Sw, Sb, St
++diff --git a/train.py b/train.py
++index f674700..a757f67 100644
++--- a/train.py
+++++ b/train.py
++@@ -504,7 +504,7 @@ if __name__ == '__main__':
++         'n_eig': 4,
++         'margin': None,
++         'epochs': 50,
++-        'k_classes': 100,
+++        'k_classes': 16,
++         'n_samples': 64, #32
++         # Memory optimization parameters
++         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
++diff --git a/wandb/latest-run b/wandb/latest-run
++index 69bd6ff..49bc34b 120000
++--- a/wandb/latest-run
+++++ b/wandb/latest-run
++@@ -1 +1 @@
++-run-20250518_202241-r3faoyl2
++\ No newline at end of file
+++run-20250519_051450-tfwo349y
++\ No newline at end of file
++diff --git a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb
++index eb78a2b..fb7641a 100644
++Binary files a/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb and b/wandb/run-20250518_202241-r3faoyl2/run-r3faoyl2.wandb differ
+diff --git a/wandb/run-20250519_051450-tfwo349y/files/requirements.txt b/wandb/run-20250519_051450-tfwo349y/files/requirements.txt
+new file mode 100644
+index 0000000..95994b0
+--- /dev/null
++++ b/wandb/run-20250519_051450-tfwo349y/files/requirements.txt
+@@ -0,0 +1,84 @@
++GitPython==3.1.44
++charset-normalizer==3.4.1
++platformdirs==4.3.7
++nvidia-nccl-cu12==2.21.5
++nvidia-cusparselt-cu12==0.6.2
++smmap==5.0.2
++zope.deprecation==5.1
++setproctitle==1.3.5
++plaster-pastedeploy==1.0.1
++sentry-sdk==2.26.1
++click==8.1.8
++numpy==2.0.2
++fsspec==2025.3.2
++pydantic==2.11.3
++nvidia-cuda-cupti-cu12==12.4.127
++certifi==2025.1.31
++mpmath==1.3.0
++urllib3==2.4.0
++MarkupSafe==3.0.2
++pydantic_core==2.33.1
++typing-inspection==0.4.0
++WebOb==1.8.9
++gitdb==4.0.12
++annotated-types==0.7.0
++nvidia-cufft-cu12==11.2.1.3
++torchvision==0.21.0
++google==3.0.0
++translationstring==1.4
++nvidia-cuda-runtime-cu12==12.4.127
++psutil==7.0.0
++idna==3.10
++typing_extensions==4.13.2
++scipy==1.13.1
++requests==2.32.3
++nvidia-nvtx-cu12==12.4.127
++networkx==3.2.1
++nvidia-curand-cu12==10.3.5.147
++nvidia-cusolver-cu12==11.6.1.9
++pip==25.0.1
++nvidia-nvjitlink-cu12==12.4.127
++six==1.17.0
++scikit-learn==1.6.1
++triton==3.2.0
++setuptools==78.1.0
++sympy==1.13.1
++plaster==1.1.2
++nvidia-cusparse-cu12==12.3.1.170
++beautifulsoup4==4.13.4
++venusian==3.1.1
++zope.interface==7.2
++wandb==0.19.9
++tqdm==4.67.1
++nvidia-cuda-nvrtc-cu12==12.4.127
++PyYAML==6.0.2
++hupper==1.12.1
++joblib==1.4.2
++Jinja2==3.1.6
++protobuf==3.20.3
++soupsieve==2.7
++nvidia-cudnn-cu12==9.1.0.70
++pyramid==2.0.2
++filelock==3.18.0
++nvidia-cublas-cu12==12.4.5.8
++pillow==11.2.1
++PasteDeploy==3.1.0
++docker-pycreds==0.4.0
++torch==2.6.0
++threadpoolctl==3.6.0
++typing_extensions==4.12.2
++tomli==2.0.1
++importlib_metadata==8.0.0
++jaraco.functools==4.0.1
++more-itertools==10.3.0
++autocommand==2.2.2
++backports.tarfile==1.2.0
++jaraco.collections==5.1.0
++typeguard==4.3.0
++jaraco.context==5.3.0
++inflect==7.3.1
++packaging==24.2
++jaraco.text==3.12.1
++wheel==0.45.1
++platformdirs==4.2.2
++zipp==3.19.2
+diff --git a/wandb/run-20250519_051450-tfwo349y/files/wandb-metadata.json b/wandb/run-20250519_051450-tfwo349y/files/wandb-metadata.json
+new file mode 100644
+index 0000000..df1803f
+--- /dev/null
++++ b/wandb/run-20250519_051450-tfwo349y/files/wandb-metadata.json
+@@ -0,0 +1,60 @@
++{
++  "os": "Linux-5.15.146+-x86_64-with-glibc2.31",
++  "python": "CPython 3.11.4",
++  "startedAt": "2025-05-19T05:14:50.201098Z",
++  "program": "/workspace/Lidar/supervised_learning/train.py",
++  "codePath": "train.py",
++  "git": {
++    "remote": "https://github.com/c3-gerardopastrana/supervised_learning.git",
++    "commit": "d1e21e78a5d4b4214c9f4fb53b3817babd76dd5b"
++  },
++  "email": "utsavdutta98@gmail.com",
++  "root": "/workspace/Lidar/supervised_learning",
++  "host": "finetuning-80gb-4-5-59d4d9d89f-rtctb",
++  "executable": "/root/.cache/pypoetry/virtualenvs/deeplda-project-lMrMy_DZ-py3.11/bin/python",
++  "codePathLocal": "train.py",
++  "cpu_count": 48,
++  "cpu_count_logical": 96,
++  "gpu": "NVIDIA A100-SXM4-80GB",
++  "gpu_count": 4,
++  "disk": {
++    "/": {
++      "total": "3168432029696",
++      "used": "825358512128"
++    }
++  },
++  "memory": {
++    "total": "1437341159424"
++  },
++  "cpu": {
++    "count": 48,
++    "countLogical": 96
++  },
++  "gpu_nvidia": [
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    },
++    {
++      "name": "NVIDIA A100-SXM4-80GB",
++      "memoryTotal": "85899345920",
++      "cudaCores": 6912,
++      "architecture": "Ampere"
++    }
++  ],
++  "cudaVersion": "12.4"
++}
+\ No newline at end of file
+diff --git a/wandb/run-20250519_051450-tfwo349y/run-tfwo349y.wandb b/wandb/run-20250519_051450-tfwo349y/run-tfwo349y.wandb
+new file mode 100644
+index 0000000..2a66be3
+Binary files /dev/null and b/wandb/run-20250519_051450-tfwo349y/run-tfwo349y.wandb differ

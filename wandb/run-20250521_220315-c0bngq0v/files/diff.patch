@@ -1,0 +1,144 @@
+diff --git a/eval.py b/eval.py
+index 1aeadd0..98f9ce0 100644
+--- a/eval.py
++++ b/eval.py
+@@ -62,11 +62,11 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
+ 
+         # Define linear classifier
+         classifier = LinearClassifier(X_train.shape[1], int(y_train.max()) + 1).to(device)
+-        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-1)
++        optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-2)
+         criterion = nn.CrossEntropyLoss()
+ 
+         # --- Training ---
+-        epochs = 10
++        epochs = 50
+         for epoch in range(epochs):
+             classifier.train()
+             correct, total = 0, 0
+@@ -105,3 +105,4 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
+ 
+ 
+ 
++
+diff --git a/lda.py b/lda.py
+index 09e8b24..67a73af 100644
+--- a/lda.py
++++ b/lda.py
+@@ -96,10 +96,10 @@ def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
+     max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
+     max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
+     trace = torch.trace(sigma_w_inv_b).abs()
+-    lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
++    lambda_target = torch.tensor(2**7, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+     penalty = (trace - lambda_target).pow(2) / n
+     # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
+-    loss = torch.log(max_frobenius_norm) -  torch.log(trace) + penalty
++    loss = 1/10 * torch.log(max_frobenius_norm) -  torch.log(trace) # + penalty
+ 
+     # trace_w = torch.trace(sigma_w)
+     # frob_norm_sq_w = torch.sum(sigma_w ** 2)
+diff --git a/models.py b/models.py
+index 340de21..7725228 100644
+--- a/models.py
++++ b/models.py
+@@ -4,6 +4,13 @@ import torch.nn.functional as F
+ from lda import LDA, lda_loss, sina_loss, SphericalLDA
+ from torch.utils.checkpoint import checkpoint, checkpoint_sequential
+ 
++
++class L2Norm(nn.Module):
++    def forward(self, x):
++        return F.normalize(x, p=2, dim=1)
++        
++
++
+ class BasicBlock(nn.Module):
+     expansion = 1
+ 
+@@ -57,6 +64,11 @@ class ResNet(nn.Module):
+         self.avgpool = nn.AdaptiveAvgPool2d(1)
+         self.linear = nn.Linear(512 * block.expansion, num_classes)
+ 
++   
++        self.feat_dim = 128
++        self.use_bn = False
++        self.projection_head = self._make_projector(512 * block.expansion, self.feat_dim)
++        
+         if self.lda_args:
+             self.lda = LDA(num_classes, lda_args['lamb'])
+ 
+@@ -67,6 +79,17 @@ class ResNet(nn.Module):
+             layers.append(block(self.in_planes, planes, stride, use_checkpoint=self.use_checkpoint))
+             self.in_planes = planes * block.expansion
+         return nn.Sequential(*layers)
++    
++    def _make_projector(self, in_dim, out_dim):
++        hidden_dim = 4096
++        return nn.Sequential(
++            nn.Linear(in_dim, hidden_dim),
++            nn.BatchNorm1d(hidden_dim),
++            nn.ReLU(inplace=True),
++            nn.Linear(hidden_dim, out_dim),  # No BatchNorm here (as in BYOL)
++            L2Norm()
++        )
++
+ 
+     def _forward_impl(self, x):
+         def first_part_fn(x):
+@@ -96,7 +119,7 @@ class ResNet(nn.Module):
+         fea = self._forward_impl(x)
+ 
+         if self.lda_args:
+-            fea = F.normalize(fea, p=2, dim=1)
++            fea = fea = self.projection_head(fea) #F.normalize(fea, p=2, dim=1) #fea = self.projection_head(fea)
+             xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = self.lda(fea, y)
+             return xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t
+         else:
+diff --git a/train.py b/train.py
+index 4306aef..9a322ef 100644
+--- a/train.py
++++ b/train.py
+@@ -399,7 +399,7 @@ def train_worker(rank, world_size, config):
+     # testset = filter_by_class(testset_full, selected_classes)
+ 
+     # Create subset
+-    transit_size = int(0.5 * len(trainset))
++    transit_size = int(0.1 * len(trainset))
+     indices = random.sample(range(len(trainset)), transit_size)
+     transit_subset = Subset(trainset, indices)
+ 
+@@ -487,13 +487,13 @@ def train_worker(rank, world_size, config):
+ if __name__ == '__main__':
+     # Configuration with memory optimizations
+     config = {
+-        'wandb_project': "DELETEME_medium",
++        'wandb_project': "DELETEME2",
+         'wandb_entity': "gerardo-pastrana-c3-ai",
+         'wandb_group': "gapLoss",
+         'seed': 42,
+         'n_classes': 1000,
+         'train_val_split': 0.1,
+-        'batch_size': 1024,  # Global batch size
++        'batch_size': 4096,  # Global batch size
+         'num_workers': 1,  # Adjust based on CPU cores
+         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
+         'val_dir': '/data/datasets/imagenet_full_size/061417/val',
+@@ -504,7 +504,7 @@ if __name__ == '__main__':
+         'n_eig': 4,
+         'margin': None,
+         'epochs': 100,
+-        'k_classes': 160,
++        'k_classes': 128,
+         'n_samples': 64, #32
+         # Memory optimization parameters
+         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 49bc34b..df54ad4 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20250519_051450-tfwo349y
+\ No newline at end of file
++run-20250521_220315-c0bngq0v
+\ No newline at end of file
