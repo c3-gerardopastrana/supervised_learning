@@ -11,7 +11,10 @@ class LinearClassifier(nn.Module):
         self.linear = nn.Linear(input_dim, num_classes)
 
     def forward(self, x):
+        if x.dtype != self.linear.weight.dtype:
+            self.linear = self.linear.to(x.dtype)
         return self.linear(x)
+
 
 def gather_tensor(tensor):
     world_size = dist.get_world_size()
@@ -23,7 +26,7 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
-
+    print("runnin linear")
     def extract_embeddings(loader):
         embeddings, labels = [], []
         rank = dist.get_rank() if dist.is_initialized() else 0
@@ -33,13 +36,14 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
                 y = y.to(device, non_blocking=True)
                 with torch.cuda.amp.autocast(enabled=use_amp):
                     feats = model._forward_impl(x)
-                    feats = F.normalize(feats, p=2, dim=1)
+                    feats = model.projection_head(feats)
                 embeddings.append(feats)
                 labels.append(y)
         
         embeddings = torch.cat(embeddings)
         labels = torch.cat(labels)
     
+        print('initialized?, ', dist.is_initialized())
         if dist.is_initialized():
             embeddings = gather_tensor(embeddings)
             labels = gather_tensor(labels)

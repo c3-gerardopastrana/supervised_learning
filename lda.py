@@ -86,6 +86,28 @@ def lda_loss(evals, n_classes, n_eig=None, margin=None):
     # oss = (eigvals_norm * eigvals_norm.log()).sum()
     #loss = torch.log(eigvals_norm.max()-eigvals_norm.min())
     return loss
+
+def isotropy_loss(sigma_w_inv_b, lambda_target=32.0):
+    # Frobenius norm
+    frob_sq = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
+    frob_sq = torch.clamp(frob_sq, min=1e-12)  # ensure numerical stability
+
+    # Trace
+    trace = torch.trace(sigma_w_inv_b)
+    trace = torch.clamp(trace, min=1e-6)  # avoid log(0) and ensure stability
+
+    # Target trace tensor
+    lambda_target = torch.tensor(lambda_target, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+
+    # Trace penalty: (tr - λ)^2)  (normalized)
+    penalty = torch.relu(lambda_target - trace) ** 2
+
+    # Log ratio between Frobenius norm and trace
+    isotropy_loss = frob_sq - (trace ** 2) / 512
+
+    # Final loss
+    loss = isotropy_loss + penalty
+    return loss
     
 def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
     mu = xc_mean.mean(dim=0)       # (D,)
@@ -96,11 +118,16 @@ def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
     max_frobenius_norm = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
     max_frobenius_norm = torch.sqrt(max_frobenius_norm.abs()) 
     trace = torch.trace(sigma_w_inv_b).abs()
-    lambda_target = torch.tensor(2**7, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
-    penalty = (trace - lambda_target).pow(2) / n
+    lambda_target = torch.tensor(2**8, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)
+    #penalty = (trace - lambda_target).pow(2) / n
     # penalty = 0.01 * (torch.log(torch.trace(sigma_w)) - torch.log(torch.trace(sigma_b)))
-    loss = 1/10 * torch.log(max_frobenius_norm) -  torch.log(trace) # + penalty
-
+    
+    #loss = 1/10 * torch.log(max_frobenius_norm) -  torch.log(trace) # + penalty
+    
+    # penalty = (trace  - lambda_target).pow(2) / lambda_target.pow(2)
+    # loss = (torch.log(max_frobenius_norm) -  torch.log(trace))  + penalty
+    return isotropy_loss(sigma_w_inv_b) + mean_term * 512
+    
     # trace_w = torch.trace(sigma_w)
     # frob_norm_sq_w = torch.sum(sigma_w ** 2)
     # d = sigma_w.shape[0]

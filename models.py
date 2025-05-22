@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from gather import all_gather
+import torch.distributed as dist
 from lda import LDA, lda_loss, sina_loss, SphericalLDA
 from torch.utils.checkpoint import checkpoint, checkpoint_sequential
 
@@ -10,6 +12,11 @@ class L2Norm(nn.Module):
         return F.normalize(x, p=2, dim=1)
         
 
+def all_gather_tensor(tensor):
+    """Utility to all_gather tensors from all GPUs."""
+    gathered = [torch.zeros_like(tensor) for _ in range(dist.get_world_size())]
+    dist.all_gather(gathered, tensor)
+    return torch.cat(gathered, dim=0)
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -81,12 +88,12 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
     
     def _make_projector(self, in_dim, out_dim):
-        hidden_dim = 4096
+        hidden_dim = 512
         return nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, out_dim),  # No BatchNorm here (as in BYOL)
+            # nn.Linear(in_dim, hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
+            # nn.ReLU(inplace=True),
+            # nn.Linear(hidden_dim, out_dim),  # No BatchNorm here (as in BYOL)
             L2Norm()
         )
 
@@ -119,8 +126,17 @@ class ResNet(nn.Module):
         fea = self._forward_impl(x)
 
         if self.lda_args:
-            fea = fea = self.projection_head(fea) #F.normalize(fea, p=2, dim=1) #fea = self.projection_head(fea)
-            xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = self.lda(fea, y)
+            
+            fea = self.projection_head(fea) #F.normalize(fea, p=2, dim=1) #fea = self.projection_head(fea)
+            dist.barrier()
+            gathered_fea = all_gather(fea)
+            gathered_fea = torch.cat(gathered_fea, dim=0)
+            gathered_y = all_gather(y)
+            gathered_y = torch.cat(gathered_y, dim=0)
+            dist.barrier()  # Ensure all ranks complete gathering
+            
+            
+            xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = self.lda(gathered_fea, gathered_y)
             return xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t
         else:
             out = self.linear(fea)

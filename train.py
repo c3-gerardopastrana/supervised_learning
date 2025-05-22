@@ -35,6 +35,12 @@ from eval import run_linear_probe_on_embeddings
 def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
     return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
 
+def all_gather_tensor(tensor):
+    """Utility to all_gather tensors from all GPUs."""
+    gathered = [torch.zeros_like(tensor) for _ in range(dist.get_world_size())]
+    dist.all_gather(gathered, tensor)
+    return torch.cat(gathered, dim=0)
+
 
 class Solver:
     def __init__(self, dataloaders, model_path, n_classes, lda_args={}, local_rank=0, world_size=1, lr=1e-3, 
@@ -493,7 +499,7 @@ if __name__ == '__main__':
         'seed': 42,
         'n_classes': 1000,
         'train_val_split': 0.1,
-        'batch_size': 4096,  # Global batch size
+        'batch_size': 1024,  # Global batch size
         'num_workers': 1,  # Adjust based on CPU cores
         'train_dir': '/data/datasets/imagenet_full_size/061417/train',
         'val_dir': '/data/datasets/imagenet_full_size/061417/val',
@@ -504,8 +510,8 @@ if __name__ == '__main__':
         'n_eig': 4,
         'margin': None,
         'epochs': 100,
-        'k_classes': 128,
-        'n_samples': 64, #32
+        'k_classes': 73,
+        'n_samples': 32, #32
         # Memory optimization parameters
         'gradient_accumulation_steps': 1,  # Accumulate gradients to save memory
         'use_amp': True,                   # Use automatic mixed precision
