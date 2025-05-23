@@ -196,16 +196,27 @@ class Solver:
             if epoch % 5 == 0:
                 import time
                 start_time = time.time()
-                lda_accuracy = run_linear_probe_on_embeddings(
+                lda_accuracy_unprojected = run_linear_probe_on_embeddings(
                     self.dataloaders['complete_train'],
                     self.dataloaders['val'],
                     self.get_net(),
-                    use_amp=self.use_amp
+                    use_amp=self.use_amp,
+                    use_projection=False
+    
+                )
+                lda_accuracy_projected = run_linear_probe_on_embeddings(
+                    self.dataloaders['complete_train'],
+                    self.dataloaders['val'],
+                    self.get_net(),
+                    use_amp=self.use_amp,
+                    use_projection=True
+    
                 )
                 
                 # Only rank 0 gets accuracy; others get None
                 if self.local_rank == 0 and lda_accuracy is not None:
-                    wandb.log({'lda_accuracy': lda_accuracy})
+                    wandb.log({'lda_accuracy_unprojected': lda_accuracy_unprojected,
+                              'lda_accuracy_projected': lda_accuracy_projected})
                     elapsed_time = (time.time() - start_time) / 60  # convert to minutes
                     print(f"Total time: {elapsed_time:.2f} minutes")
 

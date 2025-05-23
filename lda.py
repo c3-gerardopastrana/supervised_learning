@@ -59,7 +59,7 @@ def lda(X, y, n_classes, lamb):
     temp = torch.linalg.solve(Sw_reg, Sb) #torch.linalg.pinv(Sw, hermitian=True).matmul(Sb)
     temp = (temp + temp.T) / 2
     
-    return Xc_mean, temp, Sw, Sb, St
+    return mu, temp, Sw, Sb, St
 
 
 def lda_loss(evals, n_classes, n_eig=None, margin=None):
@@ -110,7 +110,7 @@ def isotropy_loss(sigma_w_inv_b, lambda_target=32.0):
     return loss
     
 def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t):
-    mu = xc_mean.mean(dim=0)       # (D,)
+    mu = xc_mean#.mean(dim=0)       # (D,)
     mean_term = torch.sum(mu ** 2)
     # loss = (torch.log(torch.trace(sigma_t)) - torch.log(torch.trace(sigma_b))) + mean_term
     n = torch.tensor(512, dtype=sigma_w_inv_b.dtype, device=sigma_w_inv_b.device)

@@ -88,12 +88,12 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
     
     def _make_projector(self, in_dim, out_dim):
-        hidden_dim = 512
+        hidden_dim = 1024
         return nn.Sequential(
-            # nn.Linear(in_dim, hidden_dim),
-            # nn.BatchNorm1d(hidden_dim),
-            # nn.ReLU(inplace=True),
-            # nn.Linear(hidden_dim, out_dim),  # No BatchNorm here (as in BYOL)
+            nn.Linear(in_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, out_dim),  # No BatchNorm here (as in BYOL)
             L2Norm()
         )
 

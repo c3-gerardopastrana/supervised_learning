@@ -22,7 +22,7 @@ def gather_tensor(tensor):
     dist.all_gather(tensors_gather, tensor)
     return torch.cat(tensors_gather, dim=0)
 
-def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None, use_amp=True):
+def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None, use_amp=True, use_projection=False):
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
@@ -36,7 +36,10 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
                 y = y.to(device, non_blocking=True)
                 with torch.cuda.amp.autocast(enabled=use_amp):
                     feats = model._forward_impl(x)
-                    feats = model.projection_head(feats)
+                    if use_projection:
+                        feats = model.projection_head(feats)
+                    else:
+                        feats = F.normalize(feats, p=2, dim=1)
                 embeddings.append(feats)
                 labels.append(y)
         
@@ -61,8 +64,8 @@ def run_linear_probe_on_embeddings(train_loader, val_loader, model, device=None,
         train_ds = TensorDataset(X_train, y_train)
         val_ds = TensorDataset(X_val, y_val)
 
-        train_loader = DataLoader(train_ds, batch_size=1024, shuffle=True)
-        val_loader = DataLoader(val_ds, batch_size=1024)
+        train_loader = DataLoader(train_ds, batch_size=4096, shuffle=True)
+        val_loader = DataLoader(val_ds, batch_size=4096)
 
         # Define linear classifier
         classifier = LinearClassifier(X_train.shape[1], int(y_train.max()) + 1).to(device)
