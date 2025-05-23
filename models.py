@@ -136,8 +136,8 @@ class ResNet(nn.Module):
             dist.barrier()  # Ensure all ranks complete gathering
             
             
-            xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = self.lda(gathered_fea, gathered_y)
-            return xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t
+            xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu = self.lda(gathered_fea, gathered_y)
+            return xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu
         else:
             out = self.linear(fea)
             return out

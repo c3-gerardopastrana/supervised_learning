@@ -83,11 +83,11 @@ class Solver:
 
     def handle_lda(self, inputs, targets, epoch, batch_idx):
         net = self.get_net()
-        xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t = net(inputs, targets, epoch)
+        xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu = net(inputs, targets, epoch)
      
     
         
-        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t)
+        loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t, mu)
     
         if self.local_rank == 0 and batch_idx % 5==0:
             metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t)
@@ -214,7 +214,7 @@ class Solver:
                 )
                 
                 # Only rank 0 gets accuracy; others get None
-                if self.local_rank == 0 and lda_accuracy is not None:
+                if self.local_rank == 0 and lda_accuracy_unprojected is not None and lda_accuracy_projected is not None:
                     wandb.log({'lda_accuracy_unprojected': lda_accuracy_unprojected,
                               'lda_accuracy_projected': lda_accuracy_projected})
                     elapsed_time = (time.time() - start_time) / 60  # convert to minutes
@@ -224,16 +224,16 @@ class Solver:
     
             # Save best model
             if self.local_rank == 0:
-                if lda_accuracy > best_loss:
-                    best_loss = lda_accuracy
+                if lda_accuracy_unprojected > best_loss:
+                    best_loss = lda_accuracy_unprojected
                     print('Best val loss found')
-                    self.save_checkpoint(epoch, lda_accuracy)
+                    self.save_checkpoint(epoch, lda_accuracy_unprojected)
     
                 print()
     
         # Final save
         if self.local_rank == 0:
-            self.save_checkpoint(epochs - 1, lda_accuracy, suffix='final')
+            self.save_checkpoint(epochs - 1, lda_accuracy_unprojected, suffix='final')
 
 
 def setup(rank, world_size):
