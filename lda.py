@@ -87,7 +87,7 @@ def lda_loss(evals, n_classes, n_eig=None, margin=None):
     #loss = torch.log(eigvals_norm.max()-eigvals_norm.min())
     return loss
 
-def isotropy_loss(sigma_w_inv_b, lambda_target=32.0):
+def isotropy_loss(sigma_w_inv_b, lambda_target = 42.0):
     # Frobenius norm
     frob_sq = torch.trace(sigma_w_inv_b @ sigma_w_inv_b)
     frob_sq = torch.clamp(frob_sq, min=1e-12)  # ensure numerical stability
@@ -106,7 +106,7 @@ def isotropy_loss(sigma_w_inv_b, lambda_target=32.0):
     isotropy_loss = frob_sq - (trace ** 2) / 512
 
     # Final loss
-    loss = isotropy_loss + penalty
+    loss = isotropy_loss * 2 + penalty * 0.1
     return loss
     
 def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t, mu):
@@ -126,7 +126,7 @@ def sina_loss(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t, mu):
     
     # penalty = (trace  - lambda_target).pow(2) / lambda_target.pow(2)
     # loss = (torch.log(max_frobenius_norm) -  torch.log(trace))  + penalty
-    return isotropy_loss(sigma_w_inv_b) + mean_term * 512
+    return isotropy_loss(sigma_w_inv_b) + torch.sqrt(mean_term) * 256
     
     # trace_w = torch.trace(sigma_w)
     # frob_norm_sq_w = torch.sum(sigma_w ** 2)

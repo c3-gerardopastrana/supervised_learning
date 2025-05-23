@@ -90,7 +90,7 @@ class Solver:
         loss = self.criterion(sigma_w_inv_b, sigma_w, sigma_b, xc_mean, sigma_t, mu)
     
         if self.local_rank == 0 and batch_idx % 5==0:
-            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t)
+            metrics = compute_wandb_metrics(xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu)
             wandb.log(metrics, commit=False)
             wandb.log({'loss': loss.item(), 'epoch': epoch}, commit=False)
     

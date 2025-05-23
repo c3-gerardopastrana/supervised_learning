@@ -1,6 +1,6 @@
 import torch
 
-def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t):
+def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu):
     """
     Computes and returns a dictionary of metrics to be logged to wandb.
 
@@ -66,8 +66,8 @@ def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t):
     std_norm = norms.std().item()
     
     # Check if the class means themselves are centered around the origin
-    mean_of_means = Xc_mean.mean(dim=0)
-    centered = torch.norm(mean_of_means).item()
+    #mean_of_means = Xc_mean.mean(dim=0)
+    centered = torch.norm(mu).item()
 
     diff = (sigma_w + sigma_b) - sigma_t.to(torch.float32)
     max_diff = torch.max(torch.abs(diff)).item()
@@ -100,7 +100,10 @@ def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t):
         "std_of_class_mean_norms": std_norm,
         "distance_of_mean_class_means_origin":centered ,
         "max_diff": max_diff,
-        
+        "cond": torch.linalg.cond(sigma_w_inv_b).item(),
+        "cond_w": torch.linalg.cond(sigma_w).item(),
+        "cond_b": torch.linalg.cond(sigma_b).item()
+ 
     }
 
     return metrics
