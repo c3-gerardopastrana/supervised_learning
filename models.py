@@ -128,15 +128,15 @@ class ResNet(nn.Module):
         if self.lda_args:
             
             fea = self.projection_head(fea) #F.normalize(fea, p=2, dim=1) #fea = self.projection_head(fea)
-            dist.barrier()
-            gathered_fea = all_gather(fea)
-            gathered_fea = torch.cat(gathered_fea, dim=0)
-            gathered_y = all_gather(y)
-            gathered_y = torch.cat(gathered_y, dim=0)
-            dist.barrier()  # Ensure all ranks complete gathering
+            # dist.barrier()
+            # gathered_fea = all_gather(fea)
+            # gathered_fea = torch.cat(gathered_fea, dim=0)
+            # gathered_y = all_gather(y)
+            # gathered_y = torch.cat(gathered_y, dim=0)
+            # dist.barrier()  # Ensure all ranks complete gathering
             
             
-            xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu = self.lda(gathered_fea, gathered_y)
+            xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu = self.lda(fea, y)
             return xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu
         else:
             out = self.linear(fea)
