@@ -102,8 +102,7 @@ def compute_wandb_metrics(Xc_mean, sigma_w_inv_b, sigma_w, sigma_b, sigma_t, mu)
         "max_diff": max_diff,
         "cond": torch.linalg.cond(sigma_w_inv_b).item(),
         "cond_w": torch.linalg.cond(sigma_w).item(),
-        "cond_b": subspace_condition_number(sigma_b)
- 
+        "cond_b": torch.linalg.cond(sigma_b).item()
     }
 
     return metrics
@@ -116,35 +115,35 @@ def spectral_entropy(matrix, eps=1e-10):
 
 
 
-def subspace_condition_number(sigma_b: torch.Tensor, n: int = 128, eps: float = 1e-12) -> float:
-    """
-    Computes the condition number of the covariance matrix sigma_b restricted to its
-    non-zero eigenspace (up to rank n - 1 if sample size n is given).
+# def subspace_condition_number(sigma_b: torch.Tensor, n: int = 128, eps: float = 1e-12) -> float:
+#     """
+#     Computes the condition number of the covariance matrix sigma_b restricted to its
+#     non-zero eigenspace (up to rank n - 1 if sample size n is given).
 
-    Args:
-        sigma_b (torch.Tensor): d x d covariance matrix.
-        n (int, optional): Sample size used to estimate sigma_b. If given, will use
-                           at most n-1 eigenvalues (due to centering).
-        eps (float): Small value to avoid divide-by-zero or log(0).
+#     Args:
+#         sigma_b (torch.Tensor): d x d covariance matrix.
+#         n (int, optional): Sample size used to estimate sigma_b. If given, will use
+#                            at most n-1 eigenvalues (due to centering).
+#         eps (float): Small value to avoid divide-by-zero or log(0).
 
-    Returns:
-        float: Condition number (λ_max / λ_min) of the non-zero eigenspace.
-               Returns float('inf') if not enough non-zero eigenvalues.
-    """
-    eigvals = torch.linalg.eigvalsh(sigma_b)
+#     Returns:
+#         float: Condition number (λ_max / λ_min) of the non-zero eigenspace.
+#                Returns float('inf') if not enough non-zero eigenvalues.
+#     """
+#     eigvals = torch.linalg.eigvalsh(sigma_b)
 
-    # Keep only eigenvalues greater than eps
-    eigvals = eigvals[eigvals > eps]
+#     # Keep only eigenvalues greater than eps
+#     eigvals = eigvals[eigvals > eps]
 
-    # If sample size is given, only consider top (n - 1) eigenvalues
-    if n is not None and eigvals.numel() > (n - 1):
-        eigvals = eigvals[-(n - 1):]
+#     # If sample size is given, only consider top (n - 1) eigenvalues
+#     if n is not None and eigvals.numel() > (n - 1):
+#         eigvals = eigvals[-(n - 1):]
 
-    if eigvals.numel() < 2:
-        return float('inf')  # Not enough directions to compute condition number
+#     if eigvals.numel() < 2:
+#         return float('inf')  # Not enough directions to compute condition number
 
-    λ_max = eigvals.max()
-    λ_min = eigvals.min()
-    return (λ_max / (λ_min + eps)).item()
+#     λ_max = eigvals.max()
+#     λ_min = eigvals.min()
+#     return (λ_max / (λ_min + eps)).item()
 
 

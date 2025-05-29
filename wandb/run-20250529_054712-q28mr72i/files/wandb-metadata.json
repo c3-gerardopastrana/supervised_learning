@@ -1,0 +1,84 @@
+{
+  "os": "Linux-5.15.146+-x86_64-with-glibc2.31",
+  "python": "CPython 3.11.4",
+  "startedAt": "2025-05-29T05:47:12.680932Z",
+  "program": "/workspace/supervised_learning/train.py",
+  "codePath": "train.py",
+  "git": {
+    "remote": "https://github.com/c3-gerardopastrana/supervised_learning.git",
+    "commit": "9870a06660181f4cf46db0a34aa56d47340a1d16"
+  },
+  "email": "gerardo.pastrana@c3.ai",
+  "root": "/workspace/supervised_learning",
+  "host": "finetuning-80gb-8-8-75fcd469-xsldq",
+  "executable": "/root/.cache/pypoetry/virtualenvs/deeplda-project-cZ9y1CQh-py3.11/bin/python",
+  "codePathLocal": "train.py",
+  "cpu_count": 48,
+  "cpu_count_logical": 96,
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "gpu_count": 8,
+  "disk": {
+    "/": {
+      "total": "3168432029696",
+      "used": "690172882944"
+    }
+  },
+  "memory": {
+    "total": "1437341159424"
+  },
+  "cpu": {
+    "count": 48,
+    "countLogical": 96
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    }
+  ],
+  "cudaVersion": "12.4"
+}

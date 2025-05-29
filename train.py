@@ -28,12 +28,12 @@ from torchvision import transforms, datasets
 import wandb
 
 from lda import LDA, lda_loss, sina_loss, SphericalLDA
-from models import ResNet, BasicBlock
+from models import ResNet
 from utils import compute_wandb_metrics
 from eval import run_linear_probe_on_embeddings
 
 def ResNet18(num_classes=1000, lda_args=None, use_checkpoint=True, segments=4):
-    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, lda_args, use_checkpoint, segments)
+    return ResNet(num_classes, lda_args)
 
 def all_gather_tensor(tensor):
     """Utility to all_gather tensors from all GPUs."""
